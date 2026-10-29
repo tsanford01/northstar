@@ -58,7 +58,7 @@ function prepareRestoreStatements(db) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     kanbanColumn: db.prepare('INSERT INTO kanban_columns (id, name, position, created_at) VALUES (?, ?, ?, ?)'),
-    kanbanCard: db.prepare('INSERT INTO kanban_cards (id, column_id, project_id, title, description, assignee, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+    kanbanCard: db.prepare('INSERT INTO kanban_cards (id, column_id, project_id, title, description, assignee, external_url, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     kanbanNote: db.prepare('INSERT INTO kanban_card_notes (id, card_id, body, created_at) VALUES (?, ?, ?, ?)'),
     kanbanHistory: db.prepare('INSERT INTO kanban_card_history (id, card_id, column_id, column_name, entered_at, exited_at) VALUES (?, ?, ?, ?, ?, ?)'),
     kanbanTag: db.prepare('INSERT INTO kanban_card_tags (card_id, name) VALUES (?, ?)'),
@@ -87,7 +87,7 @@ function insertBackupRows(db, backup) {
     insert.project.run(row.id, row.project_id, row.external_url ?? '', row.name, row.description, row.retrospective, row.blocked_note ?? '', row.archive_note ?? '', row.restore_note ?? '', row.team, row.status, scheduleStage, row.capacity, row.archived, row.hidden_from_read_only ?? 0, row.impact, row.urgency, row.confidence, row.effort, row.created_at, row.updated_at);
   }
   for (const row of backup.kanbanColumns) insert.kanbanColumn.run(row.id, row.name, row.position, row.created_at);
-  for (const row of backup.kanbanCards) insert.kanbanCard.run(row.id, row.column_id, row.project_id ?? null, row.title, row.description ?? '', row.assignee ?? '', row.position, row.created_at, row.updated_at);
+  for (const row of backup.kanbanCards) insert.kanbanCard.run(row.id, row.column_id, row.project_id ?? null, row.title, row.description ?? '', row.assignee ?? '', row.external_url ?? '', row.position, row.created_at, row.updated_at);
   for (const row of backup.kanbanCardNotes) insert.kanbanNote.run(row.id, row.card_id, row.body, row.created_at);
   for (const row of backup.kanbanCardHistory) insert.kanbanHistory.run(row.id, row.card_id, row.column_id, row.column_name, row.entered_at, row.exited_at ?? null);
   for (const row of backup.kanbanCardTags) insert.kanbanTag.run(row.card_id, row.name);
