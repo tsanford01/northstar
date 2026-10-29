@@ -65,7 +65,7 @@ test('named API tokens are scoped, revocable, hashed, and track last use', async
     assert.equal((await send('/api/api-tokens', 'POST', { name: 'Escalate', scope: 'write' }, bearer)).status, 401);
     assert.equal((await send(`/api/api-tokens/${reader.id}`, 'DELETE', undefined, bearer)).status, 401);
   }
-  assert.equal((await send('/api/teams', 'POST', { name: 'Denied', capacity: 1 }, writeBearer)).status, 401);
+  assert.equal((await send('/api/users', 'GET', undefined, writeBearer)).status, 401);
 
   const listed = await send('/api/api-tokens', 'GET', undefined, cookie).then((response) => response.json());
   assert.deepEqual(listed.map(({ name, scope }) => [name, scope]), [['Reader', 'read'], ['Writer', 'write']]);
