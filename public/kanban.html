@@ -35,6 +35,7 @@
         <label class="field wide"><span>Details <small>Optional</small></span><textarea name="description" maxlength="2000" rows="4" placeholder="Add context or next steps"></textarea></label>
         <label class="field wide"><span>Column</span><select name="columnId" required></select></label>
         <label class="field wide"><span>Assignee <small>Optional</small></span><input name="assignee" maxlength="80" list="assignee-options" placeholder="Who owns this card?"><datalist id="assignee-options"></datalist></label>
+        <label class="field wide"><span>Link <small>Optional · e.g. a pull request or ticket</small></span><input name="externalUrl" type="url" maxlength="2048" placeholder="https://"></label>
         <label class="field wide"><span>Project <small>Optional</small></span><select name="projectId"><option value="">No project — general to do</option></select></label>
         <label class="field wide"><span>Tags <small>Optional · separate with commas</small></span><input name="tags" maxlength="1000" placeholder="e.g. follow-up, release, urgent"></label>
         <p class="form-error" id="card-error" role="alert"></p>
