@@ -225,6 +225,7 @@ function createRelatedTables(db) {
   ensureColumn(db, 'planning_session_projects', 'move_comment', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'planning_sessions', 'guest_access', 'INTEGER NOT NULL DEFAULT 1 CHECK(guest_access IN (0, 1))');
   ensureColumn(db, 'kanban_cards', 'assignee', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, 'kanban_cards', 'external_url', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'projects', 'hidden_from_read_only', 'INTEGER NOT NULL DEFAULT 0 CHECK(hidden_from_read_only IN (0, 1))');
   db.exec(`
     INSERT OR IGNORE INTO planning_session_projects

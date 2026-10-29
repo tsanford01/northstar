@@ -55,6 +55,7 @@ function render() {
       <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
         <h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
         ${card.assignee ? `<span class="kanban-assignee" title="Assignee">${escapeHtml(card.assignee)}</span>` : ''}
+        ${card.externalUrl ? `<a class="kanban-card-link" href="${escapeHtml(card.externalUrl)}" target="_blank" rel="noopener noreferrer" draggable="false" title="${escapeHtml(card.externalUrl)}">↗ Link</a>` : ''}
         ${card.projectId ? `<span class="kanban-project-tag">${escapeHtml(card.projectCode || card.projectName || 'Project')}<span>${card.projectCode ? escapeHtml(card.projectName) : ''}</span></span>` : '<span class="kanban-general-tag">General to do</span>'}
         ${(card.tags || []).length ? `<div class="kanban-tags">${card.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
         ${card.noteCount ? `<span class="kanban-note-count">${card.noteCount} ${card.noteCount === 1 ? 'note' : 'notes'}</span>` : ''}
@@ -78,6 +79,7 @@ function openCard(columnId, card = null) {
   form.elements.title.value = card?.title || '';
   form.elements.description.value = card?.description || '';
   form.elements.assignee.value = card?.assignee || '';
+  form.elements.externalUrl.value = card?.externalUrl || '';
   form.elements.tags.value = card?.tags?.join(', ') || '';
   form.querySelectorAll('input, textarea, select').forEach((field) => { field.disabled = !canEdit; });
   form.querySelector('.dialog-actions').hidden = !canEdit;
@@ -158,6 +160,7 @@ async function saveCard(event) {
     title: form.elements.title.value,
     description: form.elements.description.value,
     assignee: form.elements.assignee.value,
+    externalUrl: form.elements.externalUrl.value,
     columnId: Number(form.elements.columnId.value),
     projectId: form.elements.projectId.value ? Number(form.elements.projectId.value) : null,
     tags: form.elements.tags.value.split(',').map((tag) => tag.trim()).filter(Boolean),
@@ -193,6 +196,7 @@ projectFilter.addEventListener('change', () => { selectedProject = projectFilter
 assigneeFilter.addEventListener('change', () => { selectedAssignee = assigneeFilter.value; render(); });
 
 board.addEventListener('click', async (event) => {
+  if (event.target.closest('.kanban-card-link')) return;
   const columnElement = event.target.closest('[data-column-id]');
   if (!columnElement) return;
   const columnId = Number(columnElement.dataset.columnId);
@@ -213,7 +217,7 @@ board.addEventListener('click', async (event) => {
 });
 
 board.addEventListener('keydown', (event) => {
-  if (!['Enter', ' '].includes(event.key)) return;
+  if (!['Enter', ' '].includes(event.key) || event.target.closest('.kanban-card-link')) return;
   const cardElement = event.target.closest('[data-card-id]');
   if (!cardElement) return;
   event.preventDefault();
