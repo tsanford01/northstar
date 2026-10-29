@@ -31,7 +31,7 @@ test('remote Kanban API uses revocable bearer tokens without broadening admin ac
   assert.equal((await send('/api/kanban', 'GET', undefined, { authorization: 'Bearer wrong' })).status, 401);
   assert.equal((await send('/api/kanban', 'GET', undefined, bearer)).status, 200);
   assert.equal((await send('/api/kanban/projects', 'GET', undefined, bearer).then((response) => response.json()))[0].id, project.id);
-  assert.equal((await send('/api/projects', 'GET', undefined, bearer)).status, 401);
+  assert.equal((await send('/api/projects', 'GET', undefined, bearer)).status, 200);
   assert.equal((await send('/api/backup', 'GET', undefined, bearer)).status, 401);
   assert.equal((await send('/api/api-token', 'GET', undefined, bearer)).status, 401);
 

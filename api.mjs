@@ -72,17 +72,19 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       }
 
       const sessionUser = auth.userForRequest(req);
-      const tokenUser = kanbanPath && isApiTokenAuthorized(db, req, { apiToken }) ? { id: 0, username: 'API token', role: 'admin' } : null;
+      const projectsPath = /^\/api\/projects(?:\/\d+(?:\/moves)?)?$/.test(url.pathname);
+      const tokenPath = kanbanPath || projectsPath;
+      const tokenUser = tokenPath && isApiTokenAuthorized(db, req, { apiToken }) ? { id: 0, username: 'API token', role: 'admin' } : null;
       const user = tokenUser || sessionUser;
       if (await dataApi(req, res, url, sessionUser)) return true;
       if (!url.pathname.startsWith('/api/')) return false;
-      if (kanbanPath) {
+      if (tokenPath) {
         if (!user) {
-          res.setHeader('www-authenticate', 'Bearer realm="Northstar kanban API"');
+          res.setHeader('www-authenticate', `Bearer realm="Northstar ${kanbanPath ? 'kanban' : 'projects'} API"`);
           throw new AuthError(401, 'Authentication is required.');
         }
       } else requireUser(req);
-      const requireKanbanAdmin = () => { if (user.role !== 'admin') throw new AuthError(403, 'Admin access is required.'); };
+      const requireUserAdmin = () => { if (user.role !== 'admin') throw new AuthError(403, 'Admin access is required.'); };
 
       if (url.pathname === '/api/kanban') {
         if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: user.role === 'admin' })), true;
@@ -98,7 +100,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       }
       const columnMatch = url.pathname.match(/^\/api\/kanban\/columns(?:\/(\d+))?$/);
       if (columnMatch) {
-        requireKanbanAdmin();
+        requireUserAdmin();
         const id = columnMatch[1] ? Number(columnMatch[1]) : null;
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createColumn(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateColumn(id, await readJson(req))), true;
@@ -116,7 +118,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
         const cardId = Number(noteMatch[1]);
         const noteId = noteMatch[2] ? Number(noteMatch[2]) : null;
         if (req.method === 'GET' && !noteId) return json(res, 200, kanban.listNotes(cardId, { includeHidden: user.role === 'admin' })), true;
-        requireKanbanAdmin();
+        requireUserAdmin();
         if (req.method === 'POST' && !noteId) return json(res, 201, kanban.createNote(cardId, await readJson(req))), true;
         if (req.method === 'DELETE' && noteId) { kanban.deleteNote(cardId, noteId); res.writeHead(204); res.end(); return true; }
         return json(res, 405, { error: 'Method not allowed.' }), true;
@@ -124,7 +126,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (cardMatch) {
         const id = cardMatch[1] ? Number(cardMatch[1]) : null;
         if (req.method === 'GET' && id) return json(res, 200, kanban.getCard(id, { includeHidden: user.role === 'admin' })), true;
-        requireKanbanAdmin();
+        requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createCard(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateCard(id, await readJson(req))), true;
         if (req.method === 'DELETE' && id) { kanban.deleteCard(id); res.writeHead(204); res.end(); return true; }
@@ -176,7 +178,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (!match) return false;
       const id = match[1] ? Number(match[1]) : null;
       if (req.method === 'GET' && !id) return json(res, 200, projects.list({ includeHidden: user.role === 'admin' })), true;
-      requireAdmin(req);
+      requireUserAdmin();
       if (req.method === 'POST' && !id) return json(res, 201, projects.create(await readJson(req))), true;
       if (req.method === 'PUT' && id) return json(res, 200, projects.update(id, await readJson(req))), true;
       if (req.method === 'DELETE' && id) { projects.delete(id); res.writeHead(204); res.end(); return true; }
