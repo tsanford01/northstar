@@ -180,8 +180,8 @@ curl -X POST http://localhost:3000/api/projects/bulk/delete \
 ```
 
 The add response returns `{ count, projects }`; archive returns the same shape with the updated
-projects; delete returns `{ count, projectIds }`. If `API_TOKEN` is unset, these endpoints return
-`503` while the existing browser-facing API remains available.
+projects; delete returns `{ count, projectIds }`. If no write token exists (no `API_TOKEN`, UI-generated
+token or named write token), these endpoints return `503` while the existing browser-facing API remains available.
 
 ## Kanban API for agents and remote clients
 
@@ -192,6 +192,24 @@ rotation revokes access immediately. The same token also grants project read and
 (`GET`/`POST /api/projects`, `PUT`/`DELETE /api/projects/:id`, `GET /api/projects/:id/moves`). It does
 not grant access to other admin endpoints such as users, teams, planning rooms, backups, or SSO.
 Use HTTPS when calling a remote Northstar host.
+
+### Named API tokens
+
+Admins can also issue several named tokens, each with a `read` or `write` scope. A read token can
+call only `GET` on the Kanban and project endpoints, and sees projects the way a read-only user does.
+A write token behaves like the token above. Northstar stores only each token's SHA-256 hash and
+records when it was last used. Tokens are managed with an admin browser session, never with a token:
+
+```sh
+curl -X POST http://localhost:3000/api/api-tokens -b "$SESSION_COOKIE" \
+  -H "Content-Type: application/json" -d '{"name":"Reporting agent","scope":"read"}'
+curl http://localhost:3000/api/api-tokens -b "$SESSION_COOKIE"
+curl -X DELETE http://localhost:3000/api/api-tokens/1 -b "$SESSION_COOKIE"
+```
+
+The create response includes the token once. The list returns each token's `id`, `name`, `scope`,
+`createdAt`, `lastUsedAt` and `revokedAt`, never the token itself. Revoking a token takes effect
+immediately. The token from **Menu → API access** and `API_TOKEN` keep working as write tokens.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
