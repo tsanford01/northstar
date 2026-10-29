@@ -182,10 +182,13 @@ export function createKanbanService(db) {
     // Creates the card, or updates the one card with this externalUrl; repeating a request changes nothing.
     upsertCard(input) {
       const externalUrl = requiredUrl(input?.externalUrl);
-      const matches = db.prepare('SELECT id FROM kanban_cards WHERE external_url = ?').all(externalUrl);
-      if (matches.length > 1) throw new KanbanError(409, 'More than one card has this externalUrl.');
-      if (matches.length) return { created: false, card: this.updateCard(matches[0].id, input) };
-      return { created: true, card: this.createCard(input) };
+      // Lookup and write share one transaction so concurrent upserts of a new key create one card.
+      return transaction(db, () => {
+        const matches = db.prepare('SELECT id FROM kanban_cards WHERE external_url = ?').all(externalUrl);
+        if (matches.length > 1) throw new KanbanError(409, 'More than one card has this externalUrl.');
+        if (matches.length) return { created: false, card: this.updateCard(matches[0].id, input) };
+        return { created: true, card: this.createCard(input) };
+      }, { lockKey: `kanban_cards:externalUrl:${externalUrl}` });
     },
     deleteCard(id) {
       card(id);

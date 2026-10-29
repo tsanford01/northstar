@@ -132,10 +132,13 @@ export function createProjectService(db) {
     upsert(key, input) {
       if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ProjectError(400, 'A project object is required.');
       const value = upsertKeyValue(key, input[key]);
-      const matches = db.prepare(`SELECT id FROM projects WHERE ${upsertKeys[key]} = ?`).all(value);
-      if (matches.length > 1) throw new ProjectError(409, `More than one project has this ${key}.`);
-      if (matches.length) return { created: false, project: this.update(matches[0].id, input) };
-      return { created: true, project: create(input) };
+      // Lookup and write share one transaction so concurrent upserts of a new key create one project.
+      return transaction(db, () => {
+        const matches = db.prepare(`SELECT id FROM projects WHERE ${upsertKeys[key]} = ?`).all(value);
+        if (matches.length > 1) throw new ProjectError(409, `More than one project has this ${key}.`);
+        if (matches.length) return { created: false, project: this.update(matches[0].id, input) };
+        return { created: true, project: create(input) };
+      }, { lockKey: `projects:${key}:${value}` });
     },
 
     create,

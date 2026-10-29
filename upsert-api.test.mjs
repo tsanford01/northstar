@@ -70,7 +70,7 @@ test('cards can be looked up by externalUrl or projectId and upserted by externa
   assert.equal(repeated.status, 200);
   assert.deepEqual([(await repeated.json()).card.id], [first.card.id]);
   assert.equal((await send('/api/kanban').then((response) => response.json())).cards.length, 1);
-  assert.equal((await send(`/api/kanban/cards/${first.card.id}/history`).then((response) => response.json())).length, 1);
+  assert.equal((await send(`/api/kanban/cards/${first.card.id}/history`).then((response) => response.json())).entries.length, 1);
 
   const moved = await send('/api/kanban/cards/upsert', 'PUT', { externalUrl: 'https://code.example/pull/7', columnId: done.id });
   assert.equal(moved.status, 200);
@@ -88,4 +88,47 @@ test('cards can be looked up by externalUrl or projectId and upserted by externa
   await send('/api/kanban/cards', 'POST', { ...input, externalUrl: 'https://code.example/pull/10', title: 'Duplicate one' });
   await send('/api/kanban/cards', 'POST', { ...input, externalUrl: 'https://code.example/pull/10', title: 'Duplicate two' });
   assert.equal((await send('/api/kanban/cards/upsert', 'PUT', { ...input, externalUrl: 'https://code.example/pull/10' })).status, 409);
+});
+
+const statuses = (responses) => responses.map((response) => response.status).sort();
+
+test('concurrent upserts of one new key create one record', async (t) => {
+  const send = await startApi(t, 'northstar-upsert-race-');
+  const project = { projectId: 'RACE-1', name: 'Race', impact: 4, urgency: 4, confidence: 5, effort: 5 };
+  assert.deepEqual(statuses(await Promise.all([1, 2].map(() => send('/api/projects/upsert?key=projectId', 'PUT', project)))), [200, 201]);
+  assert.equal((await send('/api/projects?projectId=RACE-1').then((response) => response.json())).length, 1);
+
+  const column = await send('/api/kanban/columns', 'POST', { name: 'To do' }).then((response) => response.json());
+  const card = { columnId: column.id, title: 'Race', externalUrl: 'https://code.example/race' };
+  assert.deepEqual(statuses(await Promise.all([1, 2].map(() => send('/api/kanban/cards/upsert', 'PUT', card)))), [200, 201]);
+  assert.equal((await send(`/api/kanban/cards?externalUrl=${encodeURIComponent(card.externalUrl)}`).then((response) => response.json())).length, 1);
+});
+
+test('concurrent upserts from two PostgreSQL-backed servers create one project per key', {
+  skip: !process.env.TEST_DATABASE_URL,
+}, async (t) => {
+  const env = { DATABASE_CLIENT: 'postgres', DATABASE_URL: process.env.TEST_DATABASE_URL, API_TOKEN: '' };
+  const servers = [];
+  for (const name of ['a', 'b']) {
+    const dataDir = await mkdtemp(join(tmpdir(), `northstar-upsert-pg-${name}-`));
+    const port = await freePort();
+    servers.push({ dataDir, base: `http://127.0.0.1:${port}`, child: await startServer(dataDir, port, env) });
+  }
+  t.after(async () => {
+    for (const server of servers) { await stopServer(server.child); await rm(server.dataDir, { recursive: true, force: true }); }
+  });
+  const suffix = Date.now().toString(36).slice(-6);
+  const keys = Array.from({ length: 20 }, (_, index) => `PG${suffix}${index}`);
+  const upsert = (server, projectId) => fetch(`${server.base}/api/projects/upsert?key=projectId`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ projectId, name: `Race ${projectId}`, impact: 3, urgency: 3, confidence: 5, effort: 5 }),
+  });
+  for (const projectId of keys) {
+    assert.deepEqual(statuses(await Promise.all(servers.map((server) => upsert(server, projectId)))), [200, 201], projectId);
+  }
+  for (const projectId of keys) {
+    const found = await fetch(`${servers[0].base}/api/projects?projectId=${projectId}`).then((response) => response.json());
+    assert.equal(found.length, 1, projectId);
+    await fetch(`${servers[0].base}/api/projects/${found[0].id}`, { method: 'DELETE' });
+  }
 });
