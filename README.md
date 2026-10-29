@@ -189,8 +189,10 @@ The Kanban API accepts the same bearer token from **Menu → API access** or `AP
 `Authorization: Bearer <token>` on each request. A valid token grants Kanban read and write access
 without a browser session; browser sessions retain their normal admin and read-only roles. Token
 rotation revokes access immediately. The same token also grants project read and write access
-(`GET`/`POST /api/projects`, `PUT`/`DELETE /api/projects/:id`, `GET /api/projects/:id/moves`). It does
-not grant access to other admin endpoints such as users, teams, planning rooms, backups, or SSO.
+(`GET`/`POST /api/projects`, `PUT`/`DELETE /api/projects/:id`, `GET /api/projects/:id/moves`) and
+manages teams and capacity (`GET`/`POST /api/teams`, `PUT`/`DELETE /api/teams/:id`,
+`GET`/`PUT /api/capacity`). It does not grant access to other admin endpoints such as users,
+planning rooms, backups, or SSO.
 Use HTTPS when calling a remote Northstar host.
 
 ### Named API tokens

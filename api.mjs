@@ -80,7 +80,8 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
 
       const sessionUser = auth.userForRequest(req);
       const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
-      const tokenPath = kanbanPath || projectsPath || url.pathname === '/api/activity';
+      const teamsPath = /^\/api\/(?:teams(?:\/\d+)?|capacity)$/.test(url.pathname);
+      const tokenPath = kanbanPath || projectsPath || teamsPath || url.pathname === '/api/activity';
       const tokenAccess = tokenPath ? apiTokenAccess(db, req, { apiToken }) : null;
       if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
       const tokenUser = tokenAccess ? { id: 0, username: tokenAccess.name, role: tokenAccess.scope === 'write' ? 'admin' : 'read_only' } : null;
@@ -157,7 +158,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
 
       if (url.pathname === '/api/capacity') {
         if (req.method === 'GET') return json(res, 200, projects.capacity({ includeHidden:user.role === 'admin' })), true;
-        requireAdmin(req);
+        requireUserAdmin();
         if (req.method !== 'PUT') return json(res, 405, { error: 'Method not allowed.' }), true;
         return json(res, 200, projects.setCapacity(await readJson(req))), true;
       }
@@ -166,7 +167,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (teamMatch) {
         const id = teamMatch[1] ? Number(teamMatch[1]) : null;
         if (req.method === 'GET' && !id) return json(res, 200, teams.list({ includeHidden:user.role === 'admin' })), true;
-        requireAdmin(req);
+        requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, teams.create(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, teams.update(id, await readJson(req))), true;
         if (req.method === 'DELETE' && id) { teams.delete(id); res.writeHead(204); res.end(); return true; }
