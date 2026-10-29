@@ -217,6 +217,15 @@ function createRelatedTables(db) {
       PRIMARY KEY(session_id, project_id)
     );
     CREATE INDEX IF NOT EXISTS idx_planning_sessions_project ON planning_sessions(project_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      scope TEXT NOT NULL CHECK(scope IN ('read', 'write')),
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_used_at TEXT,
+      revoked_at TEXT
+    );
   `);
   ensureColumn(db, 'portfolio_settings', 'api_token_hash', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'portfolio_settings', 'api_token_created_at', 'TEXT');

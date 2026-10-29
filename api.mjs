@@ -1,5 +1,5 @@
 import { AuthError, createAuthService } from './auth-service.mjs';
-import { createDataApi, isApiTokenAuthorized } from './data-api.mjs';
+import { apiTokenAccess, createDataApi } from './data-api.mjs';
 import { json, readJson } from './http-utils.mjs';
 import { createPlanningService, PlanningError } from './planning-service.mjs';
 import { createProjectService, ProjectError } from './project-service.mjs';
@@ -74,7 +74,9 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       const sessionUser = auth.userForRequest(req);
       const projectsPath = /^\/api\/projects(?:\/\d+(?:\/moves)?)?$/.test(url.pathname);
       const tokenPath = kanbanPath || projectsPath;
-      const tokenUser = tokenPath && isApiTokenAuthorized(db, req, { apiToken }) ? { id: 0, username: 'API token', role: 'admin' } : null;
+      const tokenAccess = tokenPath ? apiTokenAccess(db, req, { apiToken }) : null;
+      if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
+      const tokenUser = tokenAccess ? { id: 0, username: tokenAccess.name, role: tokenAccess.scope === 'write' ? 'admin' : 'read_only' } : null;
       const user = tokenUser || sessionUser;
       if (await dataApi(req, res, url, sessionUser)) return true;
       if (!url.pathname.startsWith('/api/')) return false;

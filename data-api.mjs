@@ -18,9 +18,26 @@ function authorized(req, expectedToken, expectedHash = '') {
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
-export function isApiTokenAuthorized(db, req, { apiToken = process.env.API_TOKEN } = {}) {
+// Returns the caller's token access ({ name, scope }) or null. The single legacy token always has write scope.
+export function apiTokenAccess(db, req, { apiToken = process.env.API_TOKEN } = {}) {
+  const match = String(req.headers.authorization || '').match(/^Bearer (.+)$/i);
+  if (!match) return null;
   const settings = db.prepare('SELECT api_token_hash AS hash FROM portfolio_settings WHERE id = 1').get();
-  return authorized(req, apiToken, settings?.hash);
+  if (authorized(req, apiToken, settings?.hash)) return { name: 'API token', scope: 'write' };
+  const row = db.prepare('SELECT id, name, scope FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL')
+    .get(tokenHash(match[1]).toString('hex'));
+  if (!row) return null;
+  db.prepare("UPDATE api_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_used_at IS NULL OR last_used_at < datetime('now', ?))")
+    .run(row.id, '-60 seconds');
+  return { name: row.name, scope: row.scope };
+}
+
+export function isApiTokenAuthorized(db, req, options) {
+  return apiTokenAccess(db, req, options)?.scope === 'write';
+}
+
+function publicToken(row) {
+  return { id: row.id, name: row.name, scope: row.scope, createdAt: row.created_at, lastUsedAt: row.last_used_at || null, revokedAt: row.revoked_at || null };
 }
 
 function unauthorized(res) {
@@ -59,11 +76,44 @@ export function createDataApi(db, projects, { apiToken = process.env.API_TOKEN }
       return true;
     }
 
+    const namedTokenMatch = url.pathname.match(/^\/api\/api-tokens(?:\/(\d+))?$/);
+    if (namedTokenMatch) {
+      if (user?.role !== 'admin') return json(res, user ? 403 : 401, { error: user ? 'Admin access is required.' : 'Authentication is required.' }), true;
+      const id = namedTokenMatch[1] ? Number(namedTokenMatch[1]) : null;
+      if (req.method === 'GET' && !id) {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(JSON.stringify(db.prepare('SELECT * FROM api_tokens ORDER BY id').all().map(publicToken)));
+        return true;
+      }
+      if (req.method === 'POST' && !id) {
+        const input = await readJson(req);
+        const name = String(input.name ?? '').trim();
+        if (!name || name.length > 80) return json(res, 400, { error: 'Token name must be 1 to 80 characters.' }), true;
+        if (!['read', 'write'].includes(input.scope)) return json(res, 400, { error: 'Token scope must be read or write.' }), true;
+        const token = `northstar_${randomBytes(32).toString('base64url')}`;
+        const result = db.prepare('INSERT INTO api_tokens (name, scope, token_hash) VALUES (?, ?, ?)').run(name, input.scope, tokenHash(token).toString('hex'));
+        const row = db.prepare('SELECT * FROM api_tokens WHERE id = ?').get(result.lastInsertRowid);
+        res.writeHead(201, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ ...publicToken(row), token }));
+        return true;
+      }
+      if (req.method === 'DELETE' && id) {
+        const result = db.prepare('UPDATE api_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL').run(id);
+        if (!result.changes) return json(res, 404, { error: 'Active API token not found.' }), true;
+        res.writeHead(204);
+        res.end();
+        return true;
+      }
+      json(res, 405, { error: 'Method not allowed.' });
+      return true;
+    }
+
     const bulkMatch = url.pathname.match(/^\/api\/projects\/bulk\/(add|archive|delete)$/);
     if (bulkMatch) {
       if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' }), true;
       const settings = apiTokenSettings();
-      if (!settings.hash && !apiToken) return json(res, 503, { error: 'Bulk API token is not configured.' }), true;
+      const writeTokens = db.prepare("SELECT COUNT(*) AS count FROM api_tokens WHERE scope = 'write' AND revoked_at IS NULL").get().count;
+      if (!settings.hash && !apiToken && !writeTokens) return json(res, 503, { error: 'Bulk API token is not configured.' }), true;
       if (!isApiTokenAuthorized(db, req, { apiToken })) return unauthorized(res), true;
       const input = await readJson(req);
       if (bulkMatch[1] === 'add') {
