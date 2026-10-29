@@ -199,7 +199,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (url.pathname === '/api/projects/upsert') {
         requireUserAdmin();
         if (req.method !== 'PUT') return json(res, 405, { error: 'Method not allowed.' }), true;
-        const result = projects.upsert(url.searchParams.get('key'), await readJson(req));
+        const result = projects.upsert(url.searchParams.get('key'), await readJson(req), { actor: user.username });
         return json(res, result.created ? 201 : 200, result), true;
       }
 
@@ -209,7 +209,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (req.method === 'GET' && !id) return json(res, 200, projects.list({ ...lookupParams(url, ['projectId', 'externalUrl']), includeHidden: user.role === 'admin' })), true;
       requireUserAdmin();
       if (req.method === 'POST' && !id) return json(res, 201, projects.create(await readJson(req))), true;
-      if (req.method === 'PUT' && id) return json(res, 200, projects.update(id, await readJson(req))), true;
+      if (req.method === 'PUT' && id) return json(res, 200, projects.update(id, await readJson(req), { actor: user.username })), true;
       if (req.method === 'DELETE' && id) { projects.delete(id); res.writeHead(204); res.end(); return true; }
       return json(res, 405, { error: 'Method not allowed.' }), true;
     } catch (error) {

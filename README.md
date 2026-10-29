@@ -285,6 +285,12 @@ fields for its type:
 | `planning.decided` | project fields, final `scores`, `comment` |
 | `card.created`, `card.moved` | `cardId`, `title`, `projectId`, `columnId`, `columnName` |
 | `card.note` | `cardId`, `title`, `projectId`, `body` |
+| `project.status` | project fields, `from`, `to`, `note` (the blocked note when `to` is `Blocked`), `actor` |
+| `project.archived`, `project.restored` | project fields, `note` (the archive or restore note), `actor` |
+| `project.team`, `project.capacity` | project fields, `from`, `to`, `actor` |
+
+Status, archive, team and capacity events are recorded from the time this history was added; earlier
+changes are not backfilled. `actor` is the username, or the API token's name.
 
 `limit` (1–500, default 100) caps the number of items. `since` (an ISO 8601 timestamp) returns only
 events at or after that time, compared to the whole second; to poll, pass the newest `at` you have seen and skip items whose `id`
