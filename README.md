@@ -188,7 +188,9 @@ projects; delete returns `{ count, projectIds }`. If `API_TOKEN` is unset, these
 The Kanban API accepts the same bearer token from **Menu → API access** or `API_TOKEN`. Use it in
 `Authorization: Bearer <token>` on each request. A valid token grants Kanban read and write access
 without a browser session; browser sessions retain their normal admin and read-only roles. Token
-rotation revokes access immediately. The token does not grant access to other admin endpoints.
+rotation revokes access immediately. The same token also grants project read and write access
+(`GET`/`POST /api/projects`, `PUT`/`DELETE /api/projects/:id`, `GET /api/projects/:id/moves`). It does
+not grant access to other admin endpoints such as users, teams, planning rooms, backups, or SSO.
 Use HTTPS when calling a remote Northstar host.
 
 | Method | Path | Purpose |
