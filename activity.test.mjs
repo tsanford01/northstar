@@ -54,9 +54,33 @@ test('activity feed lists recent project and card events, newest first, respecti
   assert.equal((await read('/api/activity?limit=2', cookie)).items.length, 2);
   const since = items[0].at;
   const recent = (await read(`/api/activity?since=${encodeURIComponent(since)}`, cookie)).items;
-  assert.ok(recent.length >= 1 && recent.every((item) => item.at >= since));
+  assert.ok(recent.some((item) => item.id === items[0].id));
+  assert.ok(recent.every((item) => item.at >= `${since.slice(0, 19)}.000Z`));
   assert.deepEqual((await read('/api/activity?since=2999-01-01T00:00:00Z', cookie)).items, []);
   assert.equal((await send('/api/activity?since=yesterday', 'GET', undefined, cookie)).status, 400);
   assert.equal((await send('/api/activity?limit=0', 'GET', undefined, cookie)).status, 400);
   assert.equal((await send('/api/activity?limit=501', 'GET', undefined, cookie)).status, 400);
+});
+
+test('activity feed includes planning decisions', async (t) => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'northstar-activity-planning-'));
+  const port = await freePort();
+  const child = await startServer(dataDir, port);
+  t.after(async () => { await stopServer(child); await rm(dataDir, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${port}`;
+  const post = (path, body) => fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+  const project = await post('/api/projects', { projectId: 'PLAN-1', name: 'Planned', impact: 4, urgency: 4, confidence: 5, effort: 5 }).then((response) => response.json());
+  const room = await post('/api/planning-sessions', { projectIds: [project.id] }).then((response) => response.json());
+  assert.equal((await post(`/api/sessions/${room.token}/reveal`, { leaderKey: room.leaderKey, projectId: project.id })).status, 200);
+  const decided = await post(`/api/sessions/${room.token}/decide`, { leaderKey: room.leaderKey, projectId: project.id, impact: 7, urgency: 6, confidence: 5, effort: 4, moveComment: 'Agreed in planning' });
+  assert.equal(decided.status, 200);
+
+  const { items } = await fetch(`${base}/api/activity`).then((response) => response.json());
+  const decision = items.find((item) => item.type === 'planning.decided');
+  assert.ok(decision, 'planning decision is listed');
+  assert.match(decision.id, new RegExp(`^planning\\.decided:\\d+:${project.id}$`));
+  assert.deepEqual([decision.projectId, decision.projectCode, decision.scores, decision.comment],
+    [project.id, 'PLAN-1', { impact: 7, urgency: 6, confidence: 5, effort: 4 }, 'Agreed in planning']);
+  assert.match(decision.at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/);
 });

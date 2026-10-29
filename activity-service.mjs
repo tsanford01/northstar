@@ -20,7 +20,8 @@ export function createActivityService(db) {
     if (since !== undefined && since !== null && since !== '') {
       const parsed = Date.parse(since);
       if (Number.isNaN(parsed)) throw new ActivityError(400, 'since must be an ISO 8601 timestamp.');
-      sinceIso = new Date(parsed).toISOString();
+      // Whole seconds: most timestamps are stored to the second, so a finer cut could drop events.
+      sinceIso = new Date(Math.floor(parsed / 1000) * 1000).toISOString();
     }
     const count = limit === undefined || limit === null || limit === '' ? DEFAULT_LIMIT : Number(limit);
     if (!Number.isInteger(count) || count < 1 || count > MAX_LIMIT) throw new ActivityError(400, `limit must be a whole number from 1 to ${MAX_LIMIT}.`);
