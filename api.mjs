@@ -8,6 +8,11 @@ import { createSsoService } from './sso-service.mjs';
 import { createSsoSettings } from './sso-settings.mjs';
 import { createKanbanService, KanbanError } from './kanban-service.mjs';
 
+// Lookup filters from the query string; absent parameters are left out.
+function lookupParams(url, names) {
+  return Object.fromEntries(names.filter((name) => url.searchParams.has(name)).map((name) => [name, url.searchParams.get(name)]));
+}
+
 export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
   const ssoSettings = createSsoSettings(db);
   let ssoConfig = ssoSettings.load();
@@ -72,7 +77,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       }
 
       const sessionUser = auth.userForRequest(req);
-      const projectsPath = /^\/api\/projects(?:\/\d+(?:\/moves)?)?$/.test(url.pathname);
+      const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
       const tokenPath = kanbanPath || projectsPath;
       const tokenAccess = tokenPath ? apiTokenAccess(db, req, { apiToken }) : null;
       if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
@@ -125,9 +130,16 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
         if (req.method === 'DELETE' && noteId) { kanban.deleteNote(cardId, noteId); res.writeHead(204); res.end(); return true; }
         return json(res, 405, { error: 'Method not allowed.' }), true;
       }
+      if (url.pathname === '/api/kanban/cards/upsert') {
+        requireUserAdmin();
+        if (req.method !== 'PUT') return json(res, 405, { error: 'Method not allowed.' }), true;
+        const result = kanban.upsertCard(await readJson(req));
+        return json(res, result.created ? 201 : 200, result), true;
+      }
       if (cardMatch) {
         const id = cardMatch[1] ? Number(cardMatch[1]) : null;
         if (req.method === 'GET' && id) return json(res, 200, kanban.getCard(id, { includeHidden: user.role === 'admin' })), true;
+        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['externalUrl', 'projectId']), includeHidden: user.role === 'admin' })), true;
         requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createCard(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateCard(id, await readJson(req))), true;
@@ -176,10 +188,17 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
         return json(res, 200, projects.moves(projectId)), true;
       }
 
+      if (url.pathname === '/api/projects/upsert') {
+        requireUserAdmin();
+        if (req.method !== 'PUT') return json(res, 405, { error: 'Method not allowed.' }), true;
+        const result = projects.upsert(url.searchParams.get('key'), await readJson(req));
+        return json(res, result.created ? 201 : 200, result), true;
+      }
+
       const match = url.pathname.match(/^\/api\/projects(?:\/(\d+))?$/);
       if (!match) return false;
       const id = match[1] ? Number(match[1]) : null;
-      if (req.method === 'GET' && !id) return json(res, 200, projects.list({ includeHidden: user.role === 'admin' })), true;
+      if (req.method === 'GET' && !id) return json(res, 200, projects.list({ ...lookupParams(url, ['projectId', 'externalUrl']), includeHidden: user.role === 'admin' })), true;
       requireUserAdmin();
       if (req.method === 'POST' && !id) return json(res, 201, projects.create(await readJson(req))), true;
       if (req.method === 'PUT' && id) return json(res, 200, projects.update(id, await readJson(req))), true;

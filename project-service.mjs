@@ -16,6 +16,14 @@ const selectColumns = `
 `;
 
 const BULK_LIMIT = 100;
+const upsertKeys = { projectId: 'project_id', externalUrl: 'external_url' };
+
+function upsertKeyValue(key, value) {
+  if (!upsertKeys[key]) throw new ProjectError(400, 'key must be projectId or externalUrl.');
+  const text = String(value ?? '').trim().slice(0, key === 'projectId' ? 16 : 2048);
+  if (!text) throw new ProjectError(400, `${key} must not be empty.`);
+  return text;
+}
 
 export class ProjectError extends Error {
   constructor(status, message) {
@@ -111,8 +119,26 @@ export function createProjectService(db) {
       return capacity();
     },
 
-    list({ includeHidden = true } = {}) {
-      return db.prepare(`SELECT ${selectColumns} FROM projects ${includeHidden ? '' : 'WHERE hidden_from_read_only = 0'} ORDER BY score DESC, updated_at DESC`).all();
+    list({ includeHidden = true, projectId, externalUrl } = {}) {
+      const conditions = includeHidden ? [] : ['hidden_from_read_only = 0'];
+      const params = [];
+      if (projectId !== undefined) { conditions.push('project_id = ?'); params.push(upsertKeyValue('projectId', projectId)); }
+      if (externalUrl !== undefined) { conditions.push('external_url = ?'); params.push(upsertKeyValue('externalUrl', externalUrl)); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      return db.prepare(`SELECT ${selectColumns} FROM projects ${where} ORDER BY score DESC, updated_at DESC`).all(...params);
+    },
+
+    // Creates the project, or updates the one project whose projectId or externalUrl matches; repeating a request changes nothing.
+    upsert(key, input) {
+      if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ProjectError(400, 'A project object is required.');
+      const value = upsertKeyValue(key, input[key]);
+      // Lookup and write share one transaction so concurrent upserts of a new key create one project.
+      return transaction(db, () => {
+        const matches = db.prepare(`SELECT id FROM projects WHERE ${upsertKeys[key]} = ?`).all(value);
+        if (matches.length > 1) throw new ProjectError(409, `More than one project has this ${key}.`);
+        if (matches.length) return { created: false, project: this.update(matches[0].id, input) };
+        return { created: true, project: create(input) };
+      }, { lockKey: `projects:${key}:${value}` });
     },
 
     create,

@@ -54,15 +54,24 @@ function ensureColumn(db, table, column, definition) {
   if (!hasColumn(db, table, column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-export function transaction(db, callback) {
+const openTransactions = new WeakSet();
+
+// A nested call joins the outer transaction. lockKey serializes writers across PostgreSQL connections;
+// SQLite's BEGIN IMMEDIATE already serializes them.
+export function transaction(db, callback, { lockKey } = {}) {
+  if (openTransactions.has(db)) return callback();
   db.exec('BEGIN IMMEDIATE');
+  openTransactions.add(db);
   try {
+    if (lockKey && db.dialect === 'postgres') db.prepare('SELECT pg_advisory_xact_lock(hashtext(?))').get(lockKey);
     const result = callback();
     db.exec('COMMIT');
     return result;
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
+  } finally {
+    openTransactions.delete(db);
   }
 }
 
@@ -315,7 +324,7 @@ export function openDatabase(filePath, { client = 'sqlite', connectionString } =
           CREATE INDEX IF NOT EXISTS idx_planning_votes_session_project ON planning_votes(session_id, project_id, updated_at);
           CREATE INDEX IF NOT EXISTS idx_project_moves_project_date ON project_moves(project_id, moved_at DESC, id DESC);
         `);
-      });
+      }, { lockKey: 'northstar:migrate' });
       return db;
     } catch (error) { db.close(); throw error; }
   }
