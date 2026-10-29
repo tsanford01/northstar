@@ -26,13 +26,13 @@ test('API tokens manage teams and capacity; read tokens only read them', async (
   assert.match(unauthenticated.headers.get('www-authenticate'), /^Bearer/);
   assert.equal((await send('/api/teams', 'GET', undefined, { authorization: 'Bearer wrong' })).status, 401);
 
-  const created = await send('/api/teams', 'POST', { name: 'Platform', capacity: 4 }, writer);
+  const created = await send('/api/teams', 'POST', { name: 'Sync team', capacity: 4 }, writer);
   assert.equal(created.status, 201);
   const team = await created.json();
-  const updated = await send(`/api/teams/${team.id}`, 'PUT', { name: 'Platform', capacity: 6 }, writer);
+  const updated = await send(`/api/teams/${team.id}`, 'PUT', { name: 'Sync team', capacity: 6 }, writer);
   assert.equal(updated.status, 200);
   assert.equal((await updated.json()).capacity, 6);
-  assert.ok((await send('/api/teams', 'GET', undefined, reader).then((response) => response.json())).some((item) => item.name === 'Platform'));
+  assert.ok((await send('/api/teams', 'GET', undefined, reader).then((response) => response.json())).some((item) => item.name === 'Sync team'));
 
   const capacity = await send('/api/capacity', 'GET', undefined, reader);
   assert.equal(capacity.status, 200);
