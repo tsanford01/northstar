@@ -197,7 +197,7 @@ Use HTTPS when calling a remote Northstar host.
 | `GET` | `/api/kanban/projects` | List available project IDs and names for card links. |
 | `POST` | `/api/kanban/columns` | Create a column with `{ "name": "To do" }`. |
 | `PUT`, `DELETE` | `/api/kanban/columns/:id` | Rename or delete a column. Deleting also deletes its cards. |
-| `POST` | `/api/kanban/cards` | Create a card with `columnId` and `title`; `description`, `projectId`, and `tags` are optional. |
+| `POST` | `/api/kanban/cards` | Create a card with `columnId` and `title`; `description`, `assignee`, `projectId`, and `tags` are optional. |
 | `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | Read, partially update, or delete a card. `PUT` can move a card with `{ "columnId": 2 }`. |
 | `GET`, `POST` | `/api/kanban/cards/:id/notes` | List notes or add one with `{ "body": "..." }`. |
 | `DELETE` | `/api/kanban/cards/:id/notes/:noteId` | Delete one note. |

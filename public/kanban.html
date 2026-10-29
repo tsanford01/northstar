@@ -23,6 +23,7 @@
       <div class="kanban-filters">
         <label class="field"><span>Filter by project</span><select id="project-filter"><option value="all">All projects</option><option value="none">General to dos</option></select></label>
         <label class="field"><span>Filter by tag</span><select id="tag-filter"><option value="">All tags</option></select></label>
+        <label class="field"><span>Filter by assignee</span><select id="assignee-filter"><option value="">Everyone</option><option value="none">Unassigned</option></select></label>
       </div>
       <p class="form-error" id="board-error" role="alert"></p>
       <section id="kanban-board" class="kanban-board" aria-label="Kanban board"></section>
@@ -33,6 +34,7 @@
         <label class="field wide"><span>Title</span><input name="title" maxlength="200" required placeholder="What needs to be done?"></label>
         <label class="field wide"><span>Details <small>Optional</small></span><textarea name="description" maxlength="2000" rows="4" placeholder="Add context or next steps"></textarea></label>
         <label class="field wide"><span>Column</span><select name="columnId" required></select></label>
+        <label class="field wide"><span>Assignee <small>Optional</small></span><input name="assignee" maxlength="80" list="assignee-options" placeholder="Who owns this card?"><datalist id="assignee-options"></datalist></label>
         <label class="field wide"><span>Project <small>Optional</small></span><select name="projectId"><option value="">No project — general to do</option></select></label>
         <label class="field wide"><span>Tags <small>Optional · separate with commas</small></span><input name="tags" maxlength="1000" placeholder="e.g. follow-up, release, urgent"></label>
         <p class="form-error" id="card-error" role="alert"></p>
