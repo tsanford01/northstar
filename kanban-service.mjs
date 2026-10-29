@@ -31,6 +31,44 @@ function requiredUrl(value) {
   return url;
 }
 
+// A decision is stored as JSON text; '' means the card has none.
+function normalizeDecision(value, current = null) {
+  if (value === null || value === '') return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new KanbanError(400, 'Decision must be an object or null.');
+  if (!Array.isArray(value.options) || value.options.length < 1 || value.options.length > 10) throw new KanbanError(400, 'Decision options must be a list of 1–10 choices.');
+  const options = value.options.map((item) => {
+    if (typeof item !== 'string') throw new KanbanError(400, 'Decision options must be text.');
+    return requiredText(item, 'Each decision option', 200);
+  });
+  if (new Set(options).size !== options.length) throw new KanbanError(400, 'Decision options must be distinct.');
+  const choice = (field, label) => {
+    const text = optionalText(value[field], label, 200);
+    if (text && !options.includes(text)) throw new KanbanError(400, `${label} must be one of the options.`);
+    return text;
+  };
+  const recommendation = choice('recommendation', 'Recommendation');
+  let confidence = null;
+  if (value.confidence !== undefined && value.confidence !== null && value.confidence !== '') {
+    confidence = Number(value.confidence);
+    if (!Number.isInteger(confidence) || confidence < 0 || confidence > 100) throw new KanbanError(400, 'Confidence must be a whole number from 0 to 100.');
+  }
+  const decidedOption = choice('decidedOption', 'Decided option');
+  let decidedAt = null;
+  if (decidedOption) {
+    if (value.decidedAt) {
+      const parsed = new Date(String(value.decidedAt));
+      if (Number.isNaN(parsed.getTime())) throw new KanbanError(400, 'decidedAt must be an ISO date and time.');
+      decidedAt = parsed.toISOString();
+    } else decidedAt = current?.decidedOption === decidedOption ? current.decidedAt : new Date().toISOString();
+  }
+  return { options, recommendation, confidence, decidedOption, decidedAt };
+}
+
+function parseDecision(text) {
+  if (!text) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 function positiveId(value, label) {
   const id = Number(value);
   if (!Number.isSafeInteger(id) || id < 1) throw new KanbanError(400, `${label} must be a valid ID.`);
@@ -72,9 +110,9 @@ export function createKanbanService(db) {
     return row;
   };
   const card = (id) => {
-    const row = db.prepare('SELECT id, column_id AS columnId, project_id AS projectId, title, description, assignee, external_url AS externalUrl, position, created_at AS createdAt, updated_at AS updatedAt FROM kanban_cards WHERE id = ?').get(id);
+    const row = db.prepare('SELECT id, column_id AS columnId, project_id AS projectId, title, description, assignee, external_url AS externalUrl, next_step AS nextStep, decision, position, created_at AS createdAt, updated_at AS updatedAt FROM kanban_cards WHERE id = ?').get(id);
     if (!row) throw new KanbanError(404, 'Card not found.');
-    return { ...row, tags: tagsFor(id) };
+    return { ...row, decision: parseDecision(row.decision), tags: tagsFor(id) };
   };
   const projectId = (value) => {
     if (value === null || value === undefined || value === '') return null;
@@ -100,6 +138,7 @@ export function createKanbanService(db) {
       const columns = db.prepare('SELECT id, name, position FROM kanban_columns ORDER BY position, id').all();
       const cards = db.prepare(`
         SELECT c.id, c.column_id AS columnId, c.project_id AS projectId, c.title, c.description, c.assignee, c.external_url AS externalUrl,
+          c.next_step AS nextStep, c.decision,
           c.position, c.created_at AS createdAt, c.updated_at AS updatedAt,
           p.name AS projectName, p.project_id AS projectCode,
           (SELECT COUNT(*) FROM kanban_card_notes n WHERE n.card_id = c.id) AS noteCount
@@ -110,7 +149,7 @@ export function createKanbanService(db) {
       const tags = db.prepare('SELECT card_id AS cardId, name FROM kanban_card_tags ORDER BY name').all();
       const cardTags = new Map();
       tags.forEach((tag) => cardTags.set(tag.cardId, [...(cardTags.get(tag.cardId) || []), tag.name]));
-      cards.forEach((item) => { item.tags = cardTags.get(item.id) || []; });
+      cards.forEach((item) => { item.tags = cardTags.get(item.id) || []; item.decision = parseDecision(item.decision); });
       return { columns, cards };
     },
     createColumn(input) {
@@ -135,11 +174,13 @@ export function createKanbanService(db) {
       const description = optionalText(input?.description, 'Description', 2000);
       const assignee = optionalText(input?.assignee, 'Assignee', 80);
       const externalUrl = optionalUrl(input?.externalUrl);
+      const nextStep = optionalText(input?.nextStep, 'Next step', 1000);
+      const decision = input?.decision === undefined ? null : normalizeDecision(input.decision);
       const linkedProjectId = projectId(input?.projectId);
       const tags = normalizeTags(input?.tags ?? []);
       return transaction(db, () => {
-        const result = db.prepare('INSERT INTO kanban_cards (column_id, project_id, title, description, assignee, external_url, position) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(columnId, linkedProjectId, title, description, assignee, externalUrl, nextPosition('kanban_cards', 'WHERE column_id = ?', columnId));
+        const result = db.prepare('INSERT INTO kanban_cards (column_id, project_id, title, description, assignee, external_url, next_step, decision, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(columnId, linkedProjectId, title, description, assignee, externalUrl, nextStep, decision ? JSON.stringify(decision) : '', nextPosition('kanban_cards', 'WHERE column_id = ?', columnId));
         db.prepare('INSERT INTO kanban_card_history (card_id, column_id, column_name, entered_at) VALUES (?, ?, ?, ?)')
           .run(result.lastInsertRowid, columnId, column(columnId).name, new Date().toISOString());
         saveTags(result.lastInsertRowid, tags);
@@ -154,6 +195,8 @@ export function createKanbanService(db) {
       const description = input?.description === undefined ? current.description : optionalText(input.description, 'Description', 2000);
       const assignee = input?.assignee === undefined ? current.assignee : optionalText(input.assignee, 'Assignee', 80);
       const externalUrl = input?.externalUrl === undefined ? current.externalUrl : optionalUrl(input.externalUrl);
+      const nextStep = input?.nextStep === undefined ? current.nextStep : optionalText(input.nextStep, 'Next step', 1000);
+      const decision = input?.decision === undefined ? current.decision : normalizeDecision(input.decision, current.decision);
       const linkedProjectId = input?.projectId === undefined ? current.projectId : projectId(input.projectId);
       const tags = input?.tags === undefined ? null : normalizeTags(input.tags);
       const position = columnId === current.columnId ? current.position : nextPosition('kanban_cards', 'WHERE column_id = ?', columnId);
@@ -164,20 +207,25 @@ export function createKanbanService(db) {
           db.prepare('INSERT INTO kanban_card_history (card_id, column_id, column_name, entered_at) VALUES (?, ?, ?, ?)')
             .run(id, columnId, column(columnId).name, movedAt);
         }
-        db.prepare('UPDATE kanban_cards SET column_id = ?, project_id = ?, title = ?, description = ?, assignee = ?, external_url = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(columnId, linkedProjectId, title, description, assignee, externalUrl, position, id);
+        db.prepare('UPDATE kanban_cards SET column_id = ?, project_id = ?, title = ?, description = ?, assignee = ?, external_url = ?, next_step = ?, decision = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(columnId, linkedProjectId, title, description, assignee, externalUrl, nextStep, decision ? JSON.stringify(decision) : '', position, id);
         if (tags) saveTags(id, tags);
         return card(id);
       });
     },
-    findCards({ externalUrl, projectId: linkedProjectId, includeHidden = false } = {}) {
+    findCards({ externalUrl, projectId: linkedProjectId, decision, includeHidden = false } = {}) {
       const conditions = includeHidden ? [] : ['(p.id IS NULL OR p.hidden_from_read_only = 0)'];
       const params = [];
       if (externalUrl !== undefined) { conditions.push('c.external_url = ?'); params.push(requiredUrl(externalUrl)); }
       if (linkedProjectId !== undefined) { conditions.push('c.project_id = ?'); params.push(positiveId(linkedProjectId, 'Project')); }
+      if (decision !== undefined) {
+        if (decision !== 'open') throw new KanbanError(400, 'decision filter must be "open".');
+        conditions.push("c.decision != ''");
+      }
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
       return db.prepare(`SELECT c.id FROM kanban_cards c LEFT JOIN projects p ON p.id = c.project_id ${where} ORDER BY c.column_id, c.position, c.id`)
-        .all(...params).map((row) => card(row.id));
+        .all(...params).map((row) => card(row.id))
+        .filter((item) => decision === undefined || !item.decision?.decidedOption);
     },
     // Creates the card, or updates the one card with this externalUrl; repeating a request changes nothing.
     upsertCard(input) {

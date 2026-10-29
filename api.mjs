@@ -147,7 +147,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (cardMatch) {
         const id = cardMatch[1] ? Number(cardMatch[1]) : null;
         if (req.method === 'GET' && id) return json(res, 200, kanban.getCard(id, { includeHidden: user.role === 'admin' })), true;
-        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['externalUrl', 'projectId']), includeHidden: user.role === 'admin' })), true;
+        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['externalUrl', 'projectId', 'decision']), includeHidden: user.role === 'admin' })), true;
         requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createCard(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateCard(id, await readJson(req))), true;
