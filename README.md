@@ -211,6 +211,26 @@ The create response includes the token once. The list returns each token's `id`,
 `createdAt`, `lastUsedAt` and `revokedAt`, never the token itself. Revoking a token takes effect
 immediately. The token from **Menu → API access** and `API_TOKEN` keep working as write tokens.
 
+
+### Lookup and upsert by external key
+
+Clients that sync from another tracker can find and update records by their own key instead of
+Northstar's numeric id. `GET /api/projects?projectId=OPS-12` and `GET /api/projects?externalUrl=<url>`
+return the matching projects. `GET /api/kanban/cards?externalUrl=<url>` and
+`GET /api/kanban/cards?projectId=<id>` return the matching cards.
+
+`PUT /api/projects/upsert?key=projectId` (or `key=externalUrl`) and `PUT /api/kanban/cards/upsert`
+(keyed by `externalUrl`) update the one record with that key, or create it if none exists. The
+response is `{ created, project }` or `{ created, card }`, with `201` when created and `200` when
+updated, so repeating a request is safe. An update changes only the fields sent; a create needs the
+same fields as `POST`. If more than one record already has the key, the request returns `409`.
+
+```sh
+curl -X PUT "http://localhost:3000/api/projects/upsert?key=projectId" \
+  -H "Authorization: Bearer $API_TOKEN" -H "Content-Type: application/json" \
+  -d '{"projectId":"OPS-12","name":"API migration","impact":9,"urgency":8,"confidence":7,"effort":6}'
+```
+
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/kanban` | List columns and cards, including tags and project links. |

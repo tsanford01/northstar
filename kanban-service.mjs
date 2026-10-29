@@ -25,6 +25,12 @@ function optionalUrl(value) {
   throw new KanbanError(400, 'Link must be a valid HTTP or HTTPS URL.');
 }
 
+function requiredUrl(value) {
+  const url = optionalUrl(value);
+  if (!url) throw new KanbanError(400, 'externalUrl must not be empty.');
+  return url;
+}
+
 function positiveId(value, label) {
   const id = Number(value);
   if (!Number.isSafeInteger(id) || id < 1) throw new KanbanError(400, `${label} must be a valid ID.`);
@@ -163,6 +169,23 @@ export function createKanbanService(db) {
         if (tags) saveTags(id, tags);
         return card(id);
       });
+    },
+    findCards({ externalUrl, projectId: linkedProjectId, includeHidden = false } = {}) {
+      const conditions = includeHidden ? [] : ['(p.id IS NULL OR p.hidden_from_read_only = 0)'];
+      const params = [];
+      if (externalUrl !== undefined) { conditions.push('c.external_url = ?'); params.push(requiredUrl(externalUrl)); }
+      if (linkedProjectId !== undefined) { conditions.push('c.project_id = ?'); params.push(positiveId(linkedProjectId, 'Project')); }
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+      return db.prepare(`SELECT c.id FROM kanban_cards c LEFT JOIN projects p ON p.id = c.project_id ${where} ORDER BY c.column_id, c.position, c.id`)
+        .all(...params).map((row) => card(row.id));
+    },
+    // Creates the card, or updates the one card with this externalUrl; repeating a request changes nothing.
+    upsertCard(input) {
+      const externalUrl = requiredUrl(input?.externalUrl);
+      const matches = db.prepare('SELECT id FROM kanban_cards WHERE external_url = ?').all(externalUrl);
+      if (matches.length > 1) throw new KanbanError(409, 'More than one card has this externalUrl.');
+      if (matches.length) return { created: false, card: this.updateCard(matches[0].id, input) };
+      return { created: true, card: this.createCard(input) };
     },
     deleteCard(id) {
       card(id);
