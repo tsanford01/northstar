@@ -7,6 +7,7 @@ import { createTeamService } from './team-service.mjs';
 import { createSsoService } from './sso-service.mjs';
 import { createSsoSettings } from './sso-settings.mjs';
 import { createKanbanService, KanbanError } from './kanban-service.mjs';
+import { ActivityError, createActivityService } from './activity-service.mjs';
 
 // Lookup filters from the query string; absent parameters are left out.
 function lookupParams(url, names) {
@@ -22,6 +23,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
   const projects = createProjectService(db);
   const teams = createTeamService(db);
   const kanban = createKanbanService(db);
+  const activity = createActivityService(db);
   const dataApi = createDataApi(db, projects, { apiToken });
   const requireUser = (req) => { const user = auth.userForRequest(req); if (!user) throw new AuthError(401, 'Authentication is required.'); return user; };
   const requireAdmin = (req) => { const user = requireUser(req); if (user.role !== 'admin') throw new AuthError(403, 'Admin access is required.'); return user; };
@@ -78,7 +80,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
 
       const sessionUser = auth.userForRequest(req);
       const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
-      const tokenPath = kanbanPath || projectsPath;
+      const tokenPath = kanbanPath || projectsPath || url.pathname === '/api/activity';
       const tokenAccess = tokenPath ? apiTokenAccess(db, req, { apiToken }) : null;
       if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
       const tokenUser = tokenAccess ? { id: 0, username: tokenAccess.name, role: tokenAccess.scope === 'write' ? 'admin' : 'read_only' } : null;
@@ -93,6 +95,12 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       } else requireUser(req);
       const requireUserAdmin = () => { if (user.role !== 'admin') throw new AuthError(403, 'Admin access is required.'); };
 
+      if (url.pathname === '/api/activity') {
+        if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed.' }), true;
+        res.setHeader('cache-control', 'no-store');
+        const query = { since: url.searchParams.get('since') ?? undefined, limit: url.searchParams.get('limit') ?? undefined };
+        return json(res, 200, activity.list(query, { includeHidden: user.role === 'admin' })), true;
+      }
       if (url.pathname === '/api/kanban') {
         if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: user.role === 'admin' })), true;
         return json(res, 405, { error: 'Method not allowed.' }), true;
@@ -205,7 +213,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       if (req.method === 'DELETE' && id) { projects.delete(id); res.writeHead(204); res.end(); return true; }
       return json(res, 405, { error: 'Method not allowed.' }), true;
     } catch (error) {
-      const status = error instanceof PlanningError || error instanceof ProjectError || error instanceof AuthError || error instanceof KanbanError ? error.status : 400;
+      const status = error instanceof PlanningError || error instanceof ProjectError || error instanceof AuthError || error instanceof KanbanError || error instanceof ActivityError ? error.status : 400;
       const details = error instanceof PlanningError ? error.data : {};
       json(res, status, { error: error instanceof Error ? error.message : 'Request failed.', ...details });
       return true;
