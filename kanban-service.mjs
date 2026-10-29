@@ -57,7 +57,7 @@ export function createKanbanService(db) {
     return row;
   };
   const card = (id) => {
-    const row = db.prepare('SELECT id, column_id AS columnId, project_id AS projectId, title, description, position, created_at AS createdAt, updated_at AS updatedAt FROM kanban_cards WHERE id = ?').get(id);
+    const row = db.prepare('SELECT id, column_id AS columnId, project_id AS projectId, title, description, assignee, position, created_at AS createdAt, updated_at AS updatedAt FROM kanban_cards WHERE id = ?').get(id);
     if (!row) throw new KanbanError(404, 'Card not found.');
     return { ...row, tags: tagsFor(id) };
   };
@@ -84,7 +84,7 @@ export function createKanbanService(db) {
     list({ includeHidden = false } = {}) {
       const columns = db.prepare('SELECT id, name, position FROM kanban_columns ORDER BY position, id').all();
       const cards = db.prepare(`
-        SELECT c.id, c.column_id AS columnId, c.project_id AS projectId, c.title, c.description,
+        SELECT c.id, c.column_id AS columnId, c.project_id AS projectId, c.title, c.description, c.assignee,
           c.position, c.created_at AS createdAt, c.updated_at AS updatedAt,
           p.name AS projectName, p.project_id AS projectCode,
           (SELECT COUNT(*) FROM kanban_card_notes n WHERE n.card_id = c.id) AS noteCount
@@ -118,11 +118,12 @@ export function createKanbanService(db) {
       column(columnId);
       const title = requiredText(input?.title, 'Card title', 200);
       const description = optionalText(input?.description, 'Description', 2000);
+      const assignee = optionalText(input?.assignee, 'Assignee', 80);
       const linkedProjectId = projectId(input?.projectId);
       const tags = normalizeTags(input?.tags ?? []);
       return transaction(db, () => {
-        const result = db.prepare('INSERT INTO kanban_cards (column_id, project_id, title, description, position) VALUES (?, ?, ?, ?, ?)')
-          .run(columnId, linkedProjectId, title, description, nextPosition('kanban_cards', 'WHERE column_id = ?', columnId));
+        const result = db.prepare('INSERT INTO kanban_cards (column_id, project_id, title, description, assignee, position) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(columnId, linkedProjectId, title, description, assignee, nextPosition('kanban_cards', 'WHERE column_id = ?', columnId));
         db.prepare('INSERT INTO kanban_card_history (card_id, column_id, column_name, entered_at) VALUES (?, ?, ?, ?)')
           .run(result.lastInsertRowid, columnId, column(columnId).name, new Date().toISOString());
         saveTags(result.lastInsertRowid, tags);
@@ -135,6 +136,7 @@ export function createKanbanService(db) {
       column(columnId);
       const title = input?.title === undefined ? current.title : requiredText(input.title, 'Card title', 200);
       const description = input?.description === undefined ? current.description : optionalText(input.description, 'Description', 2000);
+      const assignee = input?.assignee === undefined ? current.assignee : optionalText(input.assignee, 'Assignee', 80);
       const linkedProjectId = input?.projectId === undefined ? current.projectId : projectId(input.projectId);
       const tags = input?.tags === undefined ? null : normalizeTags(input.tags);
       const position = columnId === current.columnId ? current.position : nextPosition('kanban_cards', 'WHERE column_id = ?', columnId);
@@ -145,8 +147,8 @@ export function createKanbanService(db) {
           db.prepare('INSERT INTO kanban_card_history (card_id, column_id, column_name, entered_at) VALUES (?, ?, ?, ?)')
             .run(id, columnId, column(columnId).name, movedAt);
         }
-        db.prepare('UPDATE kanban_cards SET column_id = ?, project_id = ?, title = ?, description = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(columnId, linkedProjectId, title, description, position, id);
+        db.prepare('UPDATE kanban_cards SET column_id = ?, project_id = ?, title = ?, description = ?, assignee = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(columnId, linkedProjectId, title, description, assignee, position, id);
         if (tags) saveTags(id, tags);
         return card(id);
       });
