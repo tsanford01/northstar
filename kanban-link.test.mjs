@@ -3,11 +3,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { startServer, stopServer } from './support/server-fixture.mjs';
+import { freePort, startServer, stopServer } from './support/server-fixture.mjs';
 
 test('kanban cards accept an optional HTTP or HTTPS link that survives backups', async (t) => {
   const dataDir = await mkdtemp(join(tmpdir(), 'northstar-kanban-link-'));
-  const port = 30000 + (process.pid % 1000);
+  const port = await freePort();
   const child = await startServer(dataDir, port);
   t.after(async () => { await stopServer(child); await rm(dataDir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${port}`;
