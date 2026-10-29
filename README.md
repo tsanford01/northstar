@@ -272,6 +272,24 @@ curl -X PUT https://northstar.example.com/api/kanban/cards/7 \
   -d '{"columnId":2}'
 ```
 
+### Activity feed
+
+`GET /api/activity` returns recent events, newest first, as `{ items }`. It accepts a session or any
+API token, read or write. Each item has a stable `id`, a `type` and an ISO 8601 `at`, plus the
+fields for its type:
+
+| `type` | Fields |
+| --- | --- |
+| `project.created` | `projectId`, `projectCode`, `projectName` |
+| `project.moved` | project fields, `from` and `to` (`impact`, `urgency`), `source`, `comment` |
+| `planning.decided` | project fields, final `scores`, `comment` |
+| `card.created`, `card.moved` | `cardId`, `title`, `projectId`, `columnId`, `columnName` |
+| `card.note` | `cardId`, `title`, `projectId`, `body` |
+
+`limit` (1–500, default 100) caps the number of items. `since` (an ISO 8601 timestamp) returns only
+events at or after that time, compared to the whole second; to poll, pass the newest `at` you have seen and skip items whose `id`
+you already hold. Read-only callers do not see events for projects hidden from read-only users.
+
 ## Code structure
 
 - `server.mjs` owns process startup, shutdown, and static files.

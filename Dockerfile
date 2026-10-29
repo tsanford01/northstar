@@ -39,6 +39,7 @@ COPY package.json \
     project-domain.mjs \
     project-service.mjs \
     team-service.mjs \
+    activity-service.mjs \
     kanban-service.mjs ./
 COPY public ./public
 
