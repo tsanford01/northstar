@@ -218,6 +218,15 @@ Clients that sync from another tracker can find and update records by their own 
 Northstar's numeric id. `GET /api/projects?projectId=OPS-12` and `GET /api/projects?externalUrl=<url>`
 return the matching projects. `GET /api/kanban/cards?externalUrl=<url>` and
 `GET /api/kanban/cards?projectId=<id>` return the matching cards.
+`GET /api/kanban/cards?decision=open` returns cards with a decision that has no `decidedOption` yet.
+
+A card's `nextStep` is free text (up to 1000 characters): the exact next action or command.
+Its `decision` is `null` or `{ "options": [...], "recommendation": "...", "confidence": 0-100,
+"decidedOption": "...", "decidedAt": "ISO time" }`. There are 1–10 distinct options, and
+`recommendation` and `decidedOption` must each be one of them. `decidedAt` is set when
+`decidedOption` is first set (or taken from the request). Writing `decision` replaces the whole
+object, and `null` clears it. Both fields work through create, update and
+`PUT /api/kanban/cards/upsert`.
 
 `PUT /api/projects/upsert?key=projectId` (or `key=externalUrl`) and `PUT /api/kanban/cards/upsert`
 (keyed by `externalUrl`) update the one record with that key, or create it if none exists. The
@@ -237,7 +246,7 @@ curl -X PUT "http://localhost:3000/api/projects/upsert?key=projectId" \
 | `GET` | `/api/kanban/projects` | List available project IDs and names for card links. |
 | `POST` | `/api/kanban/columns` | Create a column with `{ "name": "To do" }`. |
 | `PUT`, `DELETE` | `/api/kanban/columns/:id` | Rename or delete a column. Deleting also deletes its cards. |
-| `POST` | `/api/kanban/cards` | Create a card with `columnId` and `title`; `description`, `assignee`, `externalUrl` (HTTP or HTTPS), `projectId`, and `tags` are optional. |
+| `POST` | `/api/kanban/cards` | Create a card with `columnId` and `title`; `description`, `assignee`, `externalUrl` (HTTP or HTTPS), `nextStep`, `decision`, `projectId`, and `tags` are optional. |
 | `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | Read, partially update, or delete a card. `PUT` can move a card with `{ "columnId": 2 }`. |
 | `GET`, `POST` | `/api/kanban/cards/:id/notes` | List notes or add one with `{ "body": "..." }`. |
 | `DELETE` | `/api/kanban/cards/:id/notes/:noteId` | Delete one note. |

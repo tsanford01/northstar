@@ -15,6 +15,7 @@ const historyList = document.querySelector('#history-list');
 const tagFilter = document.querySelector('#tag-filter');
 const projectFilter = document.querySelector('#project-filter');
 const assigneeFilter = document.querySelector('#assignee-filter');
+const decisionFilter = document.querySelector('#decision-filter');
 const assigneeOptions = document.querySelector('#assignee-options');
 let data = { columns: [], cards: [] };
 let projects = [];
@@ -23,6 +24,7 @@ let editingId = null;
 let selectedTag = '';
 let selectedProject = 'all';
 let selectedAssignee = '';
+let selectedDecision = '';
 
 function api(path = '', options) {
   return requestJson(`/api/kanban${path}`, options, 'The board could not be saved.');
@@ -49,17 +51,22 @@ function render() {
     const cards = data.cards.filter((card) => card.columnId === column.id
       && (!selectedTag || card.tags?.includes(selectedTag))
       && (!selectedAssignee || (selectedAssignee === 'none' ? !card.assignee : card.assignee === selectedAssignee))
+      && (selectedDecision !== 'open' || (card.decision && !card.decision.decidedOption))
       && (selectedProject === 'all' || (selectedProject === 'none' ? card.projectId === null : String(card.projectId) === selectedProject)));
     return `<section class="kanban-column" data-column-id="${column.id}" aria-label="${escapeHtml(column.name)}">
       <header class="kanban-column-head"><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${canEdit ? `<div class="kanban-column-actions"><button type="button" class="column-rename" aria-label="Rename ${escapeHtml(column.name)}" title="Rename column">✎</button><button type="button" class="column-delete" aria-label="Delete ${escapeHtml(column.name)}" title="Delete column">×</button></div>` : ''}</header>
       <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
         <h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
         ${card.assignee ? `<span class="kanban-assignee" title="Assignee">${escapeHtml(card.assignee)}</span>` : ''}
+        ${card.nextStep ? `<p class="kanban-next-step"><strong>Next</strong> ${escapeHtml(card.nextStep)}</p>` : ''}
+        ${card.decision ? `<span class="kanban-decision-tag${card.decision.decidedOption ? ' decided' : ''}">${card.decision.decidedOption
+    ? `Decided: ${escapeHtml(card.decision.decidedOption)}`
+    : `Decision open${card.decision.recommendation ? ` · recommends ${escapeHtml(card.decision.recommendation)}${card.decision.confidence === null ? '' : ` (${card.decision.confidence}%)`}` : ''}`}</span>` : ''}
         ${card.externalUrl ? `<a class="kanban-card-link" href="${escapeHtml(card.externalUrl)}" target="_blank" rel="noopener noreferrer" draggable="false" title="${escapeHtml(card.externalUrl)}">↗ Link</a>` : ''}
         ${card.projectId ? `<span class="kanban-project-tag">${escapeHtml(card.projectCode || card.projectName || 'Project')}<span>${card.projectCode ? escapeHtml(card.projectName) : ''}</span></span>` : '<span class="kanban-general-tag">General to do</span>'}
         ${(card.tags || []).length ? `<div class="kanban-tags">${card.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
         ${card.noteCount ? `<span class="kanban-note-count">${card.noteCount} ${card.noteCount === 1 ? 'note' : 'notes'}</span>` : ''}
-      </article>`).join('') || `<p class="kanban-column-empty">${selectedTag || selectedAssignee || selectedProject !== 'all' ? 'No cards match these filters.' : 'Drop cards here or add one below.'}</p>`}</div>
+      </article>`).join('') || `<p class="kanban-column-empty">${selectedTag || selectedAssignee || selectedDecision || selectedProject !== 'all' ? 'No cards match these filters.' : 'Drop cards here or add one below.'}</p>`}</div>
       ${canEdit ? `<button type="button" class="kanban-add-card">+ Add card</button>` : ''}
     </section>`;
   }).join('') : '<div class="kanban-board-empty"><h2>Your board starts with a column</h2><p>Add a column for the way you organize work, then fill it with cards.</p></div>';
@@ -80,6 +87,8 @@ function openCard(columnId, card = null) {
   form.elements.description.value = card?.description || '';
   form.elements.assignee.value = card?.assignee || '';
   form.elements.externalUrl.value = card?.externalUrl || '';
+  form.elements.nextStep.value = card?.nextStep || '';
+  fillDecision(card?.decision || null);
   form.elements.tags.value = card?.tags?.join(', ') || '';
   form.querySelectorAll('input, textarea, select').forEach((field) => { field.disabled = !canEdit; });
   form.querySelector('.dialog-actions').hidden = !canEdit;
@@ -153,6 +162,36 @@ async function reload() {
   render();
 }
 
+function decisionOptions() {
+  return [...new Set(form.elements.decisionOptions.value.split('\n').map((line) => line.trim()).filter(Boolean))];
+}
+
+function setDecisionChoices(options, decided = '') {
+  const choices = options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join('');
+  document.querySelector('#decision-option-list').innerHTML = choices;
+  form.elements.decidedOption.innerHTML = '<option value="">Not decided yet</option>' + choices;
+  form.elements.decidedOption.value = options.includes(decided) ? decided : '';
+}
+
+function fillDecision(decision) {
+  form.elements.decisionOptions.value = decision?.options?.join('\n') || '';
+  form.elements.decisionRecommendation.value = decision?.recommendation || '';
+  form.elements.decisionConfidence.value = decision?.confidence ?? '';
+  setDecisionChoices(decision?.options || [], decision?.decidedOption || '');
+}
+
+function readDecision() {
+  const options = decisionOptions();
+  if (!options.length) return null;
+  const confidence = form.elements.decisionConfidence.value;
+  return {
+    options,
+    recommendation: form.elements.decisionRecommendation.value,
+    confidence: confidence === '' ? null : Number(confidence),
+    decidedOption: form.elements.decidedOption.value,
+  };
+}
+
 async function saveCard(event) {
   event.preventDefault();
   cardError.textContent = '';
@@ -161,6 +200,8 @@ async function saveCard(event) {
     description: form.elements.description.value,
     assignee: form.elements.assignee.value,
     externalUrl: form.elements.externalUrl.value,
+    nextStep: form.elements.nextStep.value,
+    decision: readDecision(),
     columnId: Number(form.elements.columnId.value),
     projectId: form.elements.projectId.value ? Number(form.elements.projectId.value) : null,
     tags: form.elements.tags.value.split(',').map((tag) => tag.trim()).filter(Boolean),
@@ -194,6 +235,8 @@ columnForm.addEventListener('submit', async (event) => {
 tagFilter.addEventListener('change', () => { selectedTag = tagFilter.value; render(); });
 projectFilter.addEventListener('change', () => { selectedProject = projectFilter.value; render(); });
 assigneeFilter.addEventListener('change', () => { selectedAssignee = assigneeFilter.value; render(); });
+decisionFilter.addEventListener('change', () => { selectedDecision = decisionFilter.value; render(); });
+form.elements.decisionOptions.addEventListener('input', () => setDecisionChoices(decisionOptions(), form.elements.decidedOption.value));
 
 board.addEventListener('click', async (event) => {
   if (event.target.closest('.kanban-card-link')) return;
