@@ -1,5 +1,6 @@
 import { escapeHtml, requestJson, showToast } from './browser-utils.js';
 import { liveUpdates } from './live-updates.js';
+import { COLUMN_DRAG_TYPE, columnControls, dropTarget, moveTarget, reorderColumns } from './kanban-columns.js';
 
 const board = document.querySelector('#kanban-board');
 const dialog = document.querySelector('#card-dialog');
@@ -60,14 +61,14 @@ function render() {
   if (!['all', 'none'].includes(selectedProject) && !projects.some((project) => String(project.id) === selectedProject)) selectedProject = 'all';
   projectFilter.innerHTML = '<option value="all">All projects</option><option value="none">General to dos</option>' + projects.map((project) => `<option value="${project.id}">${escapeHtml(project.projectId ? `${project.projectId} · ${project.name}` : project.name)}</option>`).join('');
   projectFilter.value = selectedProject;
-  board.innerHTML = data.columns.length ? data.columns.map((column) => {
+  board.innerHTML = data.columns.length ? data.columns.map((column, columnIndex) => {
     const cards = data.cards.filter((card) => card.columnId === column.id
       && (!selectedTag || card.tags?.includes(selectedTag))
       && (!selectedAssignee || (selectedAssignee === 'none' ? !card.assignee : card.assignee === selectedAssignee))
       && (selectedDecision !== 'open' || (card.decision && !card.decision.decidedOption))
       && (selectedProject === 'all' || (selectedProject === 'none' ? card.projectId === null : String(card.projectId) === selectedProject)));
     return `<section class="kanban-column" data-column-id="${column.id}" aria-label="${escapeHtml(column.name)}">
-      <header class="kanban-column-head"><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${canManageColumns ? `<div class="kanban-column-actions"><button type="button" class="column-rename" aria-label="Rename ${escapeHtml(column.name)}" title="Rename column">✎</button><button type="button" class="column-delete" aria-label="Delete ${escapeHtml(column.name)}" title="Delete column">×</button></div>` : ''}</header>
+      <header class="kanban-column-head"${canManageColumns ? ' draggable="true" title="Drag to reorder"' : ''}><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${columnControls(column, columnIndex, data.columns.length, canManageColumns)}</header>
       <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card${card.archived ? ' archived' : ''}" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
         ${card.archived ? '<span class="kanban-archived-tag">Archived</span>' : ''}<h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
         ${card.assignee ? `<span class="kanban-assignee" title="Assignee">${escapeHtml(card.assignee)}</span>` : ''}
@@ -261,6 +262,21 @@ archiveButton.addEventListener('click', async () => {
 });
 form.elements.decisionOptions.addEventListener('input', () => setDecisionChoices(decisionOptions(), form.elements.decidedOption.value));
 
+async function moveColumn(columnId, position, focusClass) {
+  if (position === null) return;
+  boardError.textContent = '';
+  const before = data.columns;
+  data = { ...data, columns: reorderColumns(before, columnId, position) };
+  render();
+  if (focusClass) {
+    const head = board.querySelector(`[data-column-id="${columnId}"]`);
+    const button = head?.querySelector(`.${focusClass}`);
+    (button && !button.disabled ? button : head?.querySelector('.column-move-left:not([disabled]), .column-move-right:not([disabled])'))?.focus();
+  }
+  try { await api(`/columns/${columnId}`, mutation('PUT', { position })); showToast('Column moved'); }
+  catch (error) { data = { ...data, columns: before }; render(); boardError.textContent = error.message; }
+}
+
 board.addEventListener('click', async (event) => {
   if (event.target.closest('.kanban-card-link')) return;
   const columnElement = event.target.closest('[data-column-id]');
@@ -268,7 +284,10 @@ board.addEventListener('click', async (event) => {
   const columnId = Number(columnElement.dataset.columnId);
   const column = data.columns.find((item) => item.id === columnId);
   const cardElement = event.target.closest('[data-card-id]');
-  if (canManageColumns && event.target.closest('.column-rename')) {
+  if (canManageColumns && event.target.closest('.column-move-left, .column-move-right')) {
+    const left = Boolean(event.target.closest('.column-move-left'));
+    await moveColumn(columnId, moveTarget(data.columns, columnId, left ? -1 : 1), left ? 'column-move-left' : 'column-move-right');
+  } else if (canManageColumns && event.target.closest('.column-rename')) {
     const name = prompt('Column name', column.name);
     if (name === null || name.trim() === column.name) return;
     try { await api(`/columns/${columnId}`, mutation('PUT', { name })); await reload(); showToast('Column renamed'); }
@@ -292,6 +311,14 @@ board.addEventListener('keydown', (event) => {
 });
 
 board.addEventListener('dragstart', (event) => {
+  const head = event.target.closest?.('.kanban-column-head');
+  if (head) {
+    if (!canManageColumns) return;
+    dragging = true;
+    event.dataTransfer.setData(COLUMN_DRAG_TYPE, head.closest('[data-column-id]').dataset.columnId);
+    event.dataTransfer.effectAllowed = 'move';
+    return;
+  }
   if (!canEdit) return;
   const cardElement = event.target.closest('[data-card-id]');
   if (!cardElement) return;
@@ -300,6 +327,15 @@ board.addEventListener('dragstart', (event) => {
   event.dataTransfer.effectAllowed = 'move';
 });
 board.addEventListener('dragover', (event) => {
+  if (canManageColumns && event.dataTransfer.types.includes(COLUMN_DRAG_TYPE)) {
+    const columnElement = event.target.closest('[data-column-id]');
+    if (!columnElement) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    board.querySelectorAll('.drop-target').forEach((element) => element.classList.remove('drop-target'));
+    columnElement.classList.add('drop-target');
+    return;
+  }
   if (!canEdit || !event.dataTransfer.types.includes('text/plain')) return;
   const columnElement = event.target.closest('[data-column-id]');
   if (!columnElement) return;
@@ -315,6 +351,13 @@ board.addEventListener('dragleave', (event) => {
 board.addEventListener('drop', async (event) => {
   const columnElement = event.target.closest('[data-column-id]');
   board.querySelectorAll('.drop-target').forEach((element) => element.classList.remove('drop-target'));
+  if (canManageColumns && columnElement && event.dataTransfer.types.includes(COLUMN_DRAG_TYPE)) {
+    event.preventDefault();
+    const draggedId = Number(event.dataTransfer.getData(COLUMN_DRAG_TYPE));
+    dragging = false;
+    await moveColumn(draggedId, dropTarget(data.columns, draggedId, Number(columnElement.dataset.columnId)));
+    return;
+  }
   if (!canEdit || !columnElement) return;
   event.preventDefault();
   const cardId = Number(event.dataTransfer.getData('text/plain'));
