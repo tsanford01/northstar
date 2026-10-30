@@ -292,9 +292,14 @@ fields for its type:
 | `project.status` | project fields, `from`, `to`, `note` (the blocked note when `to` is `Blocked`), `actor` |
 | `project.archived`, `project.restored` | project fields, `note` (the archive or restore note), `actor` |
 | `project.team`, `project.capacity` | project fields, `from`, `to`, `actor` |
+| `card.updated` | card fields, `fields` (which of `title`, `description`, `nextStep`, `externalUrl` changed), `actor` |
+| `card.decided` | card fields, `option` (the decided option), `by` and `actor` (who decided) |
+| `card.assigned` | card fields, `from`, `to` (assignee before and after; `''` is unassigned), `actor` |
+| `card.archived`, `card.restored` | card fields, `actor` |
 
-Status, archive, team and capacity events are recorded from the time this history was added; earlier
-changes are not backfilled. `actor` is the username, or the API token's name.
+Status, archive, team and capacity events for projects, and update, decision, assignee and archive
+events for cards, are recorded from the time this history was added; earlier changes are not
+backfilled. `actor` is the username, or the API token's name.
 
 `limit` (1–500, default 100) caps the number of items. `since` (an ISO 8601 timestamp) returns only
 events at or after that time, compared to the whole second; to poll, pass the newest `at` you have seen and skip items whose `id`

@@ -204,6 +204,15 @@ function createRelatedTables(db) {
       exited_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_kanban_card_history_card ON kanban_card_history(card_id, entered_at, id);
+    CREATE TABLE IF NOT EXISTS card_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id INTEGER NOT NULL REFERENCES kanban_cards(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK(kind IN ('updated', 'decided', 'assigned', 'archived', 'restored')),
+      detail TEXT NOT NULL DEFAULT '{}',
+      actor TEXT NOT NULL DEFAULT '',
+      changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_card_changes_changed ON card_changes(changed_at, id);
     CREATE TABLE IF NOT EXISTS planning_sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       token TEXT NOT NULL UNIQUE,

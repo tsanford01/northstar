@@ -113,7 +113,24 @@ export function createActivityService(db) {
         };
       });
 
-      const items = [...projects, ...moves, ...decisions, ...cardMoves, ...notes, ...changes]
+      const cardChanges = select(`
+        SELECT ch.id, ch.card_id AS cardId, c.title, c.project_id AS projectRef, ch.kind, ch.detail, ch.actor, ch.changed_at AS at
+        FROM card_changes ch JOIN kanban_cards c ON c.id = ch.card_id LEFT JOIN projects p ON p.id = c.project_id
+        WHERE 1 = 1 ${after('ch.changed_at', sinceSql)} ${visible}
+        ORDER BY ch.changed_at DESC, ch.id DESC LIMIT ?
+      `, sinceSql).map((row) => {
+        const detail = JSON.parse(row.detail || '{}');
+        const type = `card.${row.kind}`;
+        const fields = row.kind === 'updated' ? { fields: detail.fields }
+          : row.kind === 'decided' ? { option: detail.option, by: row.actor }
+          : row.kind === 'assigned' ? { from: detail.from, to: detail.to } : {};
+        return {
+          id: `${type}:${row.id}`, type, at: isoTimestamp(row.at), cardId: row.cardId, title: row.title,
+          projectId: row.projectRef ?? null, ...fields, actor: row.actor,
+        };
+      });
+
+      const items = [...projects, ...moves, ...decisions, ...cardMoves, ...notes, ...changes, ...cardChanges]
         .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : b.id.localeCompare(a.id)))
         .slice(0, count);
       return { items };

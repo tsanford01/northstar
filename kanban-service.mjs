@@ -69,6 +69,20 @@ function parseDecision(text) {
   try { return JSON.parse(text); } catch { return null; }
 }
 
+const UPDATED_FIELDS = ['title', 'description', 'nextStep', 'externalUrl'];
+
+// Records content, decision, assignee and archive changes for the activity feed.
+export function recordCardChanges(db, current, next, actor = '') {
+  const insert = db.prepare('INSERT INTO card_changes (card_id, kind, detail, actor) VALUES (?, ?, ?, ?)');
+  const record = (kind, detail = {}) => insert.run(current.id, kind, JSON.stringify(detail), String(actor || '').slice(0, 80));
+  const fields = UPDATED_FIELDS.filter((field) => (current[field] ?? '') !== (next[field] ?? ''));
+  if (fields.length) record('updated', { fields });
+  const option = next.decision?.decidedOption || '';
+  if (option && option !== (current.decision?.decidedOption || '')) record('decided', { option });
+  if ((current.assignee ?? '') !== (next.assignee ?? '')) record('assigned', { from: current.assignee ?? '', to: next.assignee ?? '' });
+  if (next.archived !== undefined && Boolean(current.archived) !== Boolean(next.archived)) record(next.archived ? 'archived' : 'restored');
+}
+
 function positiveId(value, label) {
   const id = Number(value);
   if (!Number.isSafeInteger(id) || id < 1) throw new KanbanError(400, `${label} must be a valid ID.`);
@@ -187,7 +201,7 @@ export function createKanbanService(db) {
         return card(result.lastInsertRowid);
       });
     },
-    updateCard(id, input) {
+    updateCard(id, input, { actor } = {}) {
       const current = card(id);
       const columnId = input?.columnId === undefined ? current.columnId : positiveId(input.columnId, 'Column');
       column(columnId);
@@ -210,7 +224,9 @@ export function createKanbanService(db) {
         db.prepare('UPDATE kanban_cards SET column_id = ?, project_id = ?, title = ?, description = ?, assignee = ?, external_url = ?, next_step = ?, decision = ?, position = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(columnId, linkedProjectId, title, description, assignee, externalUrl, nextStep, decision ? JSON.stringify(decision) : '', position, id);
         if (tags) saveTags(id, tags);
-        return card(id);
+        const updated = card(id);
+        recordCardChanges(db, current, updated, actor);
+        return updated;
       });
     },
     findCards({ externalUrl, projectId: linkedProjectId, decision, includeHidden = false } = {}) {
@@ -228,13 +244,13 @@ export function createKanbanService(db) {
         .filter((item) => decision === undefined || !item.decision?.decidedOption);
     },
     // Creates the card, or updates the one card with this externalUrl; repeating a request changes nothing.
-    upsertCard(input) {
+    upsertCard(input, options = {}) {
       const externalUrl = requiredUrl(input?.externalUrl);
       // Lookup and write share one transaction so concurrent upserts of a new key create one card.
       return transaction(db, () => {
         const matches = db.prepare('SELECT id FROM kanban_cards WHERE external_url = ?').all(externalUrl);
         if (matches.length > 1) throw new KanbanError(409, 'More than one card has this externalUrl.');
-        if (matches.length) return { created: false, card: this.updateCard(matches[0].id, input) };
+        if (matches.length) return { created: false, card: this.updateCard(matches[0].id, input, options) };
         return { created: true, card: this.createCard(input) };
       }, { lockKey: `kanban_cards:externalUrl:${externalUrl}` });
     },
