@@ -191,14 +191,16 @@ without a browser session; browser sessions retain their normal admin and read-o
 rotation revokes access immediately. The same token also grants project read and write access
 (`GET`/`POST /api/projects`, `PUT`/`DELETE /api/projects/:id`, `GET /api/projects/:id/moves`) and
 manages teams and capacity (`GET`/`POST /api/teams`, `PUT`/`DELETE /api/teams/:id`,
-`GET`/`PUT /api/capacity`). It does not grant access to other admin endpoints such as users,
-planning rooms, backups, or SSO.
+`GET`/`PUT /api/capacity`), and can download a backup (`GET /api/backup`) or the status CSV
+(`GET /api/status-export`). It does not grant access to other admin endpoints such as users,
+planning rooms, backup restore, or SSO.
 Use HTTPS when calling a remote Northstar host.
 
 ### Named API tokens
 
 Admins can also issue several named tokens, each with a `read` or `write` scope. A read token can
-call only `GET` on the Kanban and project endpoints, and sees projects the way a read-only user does.
+call only `GET` on the Kanban and project endpoints and the status CSV, and sees projects the way a
+read-only user does. It cannot download backups, which include hidden projects and planning-room links.
 A write token behaves like the token above. Northstar stores only each token's SHA-256 hash and
 records when it was last used. Tokens are managed with an admin browser session, never with a token:
 
