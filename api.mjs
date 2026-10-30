@@ -169,7 +169,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
         return json(res, 200, activity.list(query, { includeHidden: user.role === 'admin' })), true;
       }
       if (url.pathname === '/api/kanban') {
-        if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: user.role === 'admin' })), true;
+        if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: user.role === 'admin', archived: url.searchParams.get('archived') ?? undefined })), true;
         return json(res, 405, { error: 'Method not allowed.' }), true;
       }
       if (url.pathname === '/api/kanban/report') {
@@ -214,7 +214,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       if (cardMatch) {
         const id = cardMatch[1] ? Number(cardMatch[1]) : null;
         if (req.method === 'GET' && id) return json(res, 200, kanban.getCard(id, { includeHidden: user.role === 'admin' })), true;
-        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['key', 'externalUrl', 'projectId', 'decision']), includeHidden: user.role === 'admin' })), true;
+        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['key', 'externalUrl', 'projectId', 'decision', 'tag', 'source', 'archived']), includeHidden: user.role === 'admin' })), true;
         requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createCard(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateCard(id, await readJson(req), { actor: user.username })), true;

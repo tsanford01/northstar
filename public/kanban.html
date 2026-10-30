@@ -25,6 +25,7 @@
         <label class="field"><span>Filter by tag</span><select id="tag-filter"><option value="">All tags</option></select></label>
         <label class="field"><span>Filter by assignee</span><select id="assignee-filter"><option value="">Everyone</option><option value="none">Unassigned</option></select></label>
         <label class="field"><span>Filter by decision</span><select id="decision-filter"><option value="">All cards</option><option value="open">Open decisions</option></select></label>
+        <label class="kanban-archived-toggle"><input id="show-archived" type="checkbox"><span>Show archived</span></label>
       </div>
       <p class="form-error" id="board-error" role="alert"></p>
       <section id="kanban-board" class="kanban-board" aria-label="Kanban board"></section>
@@ -49,7 +50,7 @@
         <label class="field wide"><span>Project <small>Optional</small></span><select name="projectId"><option value="">No project — general to do</option></select></label>
         <label class="field wide"><span>Tags <small>Optional · separate with commas</small></span><input name="tags" maxlength="1000" placeholder="e.g. follow-up, release, urgent"></label>
         <p class="form-error" id="card-error" role="alert"></p>
-        <footer class="dialog-actions"><button class="delete-button" id="delete-card" type="button">Delete card</button><span></span><button class="button secondary" id="cancel-card" type="button">Cancel</button><button class="button primary" type="submit">Save card</button></footer>
+        <footer class="dialog-actions"><button class="delete-button" id="delete-card" type="button">Delete card</button><button class="button secondary" id="archive-card" type="button">Archive card</button><span></span><button class="button secondary" id="cancel-card" type="button">Cancel</button><button class="button primary" type="submit">Save card</button></footer>
       </form>
       <section class="kanban-notes" id="card-notes" hidden aria-labelledby="card-notes-title">
         <div class="kanban-notes-head"><h3 id="card-notes-title">Notes</h3><span id="note-count">0 notes</span></div>

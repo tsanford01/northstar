@@ -17,6 +17,8 @@ const tagFilter = document.querySelector('#tag-filter');
 const projectFilter = document.querySelector('#project-filter');
 const assigneeFilter = document.querySelector('#assignee-filter');
 const decisionFilter = document.querySelector('#decision-filter');
+const showArchived = document.querySelector('#show-archived');
+const archiveButton = document.querySelector('#archive-card');
 const assigneeOptions = document.querySelector('#assignee-options');
 let data = { columns: [], cards: [] };
 let projects = [];
@@ -27,6 +29,11 @@ let selectedProject = 'all';
 let selectedAssignee = '';
 let selectedDecision = '';
 let dragging = false;
+let editingCard = null;
+
+function boardPath() {
+  return showArchived.checked ? '?archived=include' : '';
+}
 
 function api(path = '', options) {
   return requestJson(`/api/kanban${path}`, options, 'The board could not be saved.');
@@ -57,8 +64,8 @@ function render() {
       && (selectedProject === 'all' || (selectedProject === 'none' ? card.projectId === null : String(card.projectId) === selectedProject)));
     return `<section class="kanban-column" data-column-id="${column.id}" aria-label="${escapeHtml(column.name)}">
       <header class="kanban-column-head"><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${canEdit ? `<div class="kanban-column-actions"><button type="button" class="column-rename" aria-label="Rename ${escapeHtml(column.name)}" title="Rename column">✎</button><button type="button" class="column-delete" aria-label="Delete ${escapeHtml(column.name)}" title="Delete column">×</button></div>` : ''}</header>
-      <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
-        <h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
+      <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card${card.archived ? ' archived' : ''}" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
+        ${card.archived ? '<span class="kanban-archived-tag">Archived</span>' : ''}<h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
         ${card.assignee ? `<span class="kanban-assignee" title="Assignee">${escapeHtml(card.assignee)}</span>` : ''}
         ${card.nextStep ? `<p class="kanban-next-step"><strong>Next</strong> ${escapeHtml(card.nextStep)}</p>` : ''}
         ${card.decision ? `<span class="kanban-decision-tag${card.decision.decidedOption ? ' decided' : ''}">${card.decision.decidedOption
@@ -76,7 +83,10 @@ function render() {
 
 function openCard(columnId, card = null) {
   editingId = card?.id || null;
+  editingCard = card;
   form.reset();
+  archiveButton.hidden = !card;
+  archiveButton.textContent = card?.archived ? 'Restore card' : 'Archive card';
   cardError.textContent = '';
   dialog.classList.toggle('editing', Boolean(card));
   document.querySelector('#card-dialog-kicker').textContent = card ? 'Edit card' : 'New card';
@@ -160,7 +170,7 @@ document.querySelector('#download-kanban-report').addEventListener('click', asyn
 });
 
 async function reload() {
-  data = await api();
+  data = await api(boardPath());
   render();
 }
 
@@ -238,6 +248,13 @@ tagFilter.addEventListener('change', () => { selectedTag = tagFilter.value; rend
 projectFilter.addEventListener('change', () => { selectedProject = projectFilter.value; render(); });
 assigneeFilter.addEventListener('change', () => { selectedAssignee = assigneeFilter.value; render(); });
 decisionFilter.addEventListener('change', () => { selectedDecision = decisionFilter.value; render(); });
+showArchived.addEventListener('change', () => { reload().catch((error) => { boardError.textContent = error.message; }); });
+archiveButton.addEventListener('click', async () => {
+  if (!editingCard) return;
+  const archived = !editingCard.archived;
+  try { await api(`/cards/${editingCard.id}`, mutation('PUT', { archived })); dialog.close(); await reload(); showToast(archived ? 'Card archived' : 'Card restored'); }
+  catch (error) { cardError.textContent = error.message; }
+});
 form.elements.decisionOptions.addEventListener('input', () => setDecisionChoices(decisionOptions(), form.elements.decidedOption.value));
 
 board.addEventListener('click', async (event) => {
@@ -346,13 +363,13 @@ try {
   const user = await requestJson('/api/auth/me');
   canEdit = user.role === 'admin';
   columnForm.hidden = !canEdit;
-  [data, projects] = await Promise.all([api(), requestJson('/api/projects')]);
+  [data, projects] = await Promise.all([api(boardPath()), requestJson('/api/projects')]);
   render();
   liveUpdates(['kanban', 'projects'], async (kinds) => {
     // Column lists scroll on their own; keep each where the viewer left it.
     const scrolls = new Map([...board.querySelectorAll('[data-column-id]')].map((element) => [element.dataset.columnId, element.querySelector('.kanban-card-list')?.scrollTop || 0]));
     const [nextData, nextProjects] = await Promise.all([
-      kinds.includes('kanban') || kinds.includes('projects') ? api() : data,
+      kinds.includes('kanban') || kinds.includes('projects') ? api(boardPath()) : data,
       kinds.includes('projects') ? requestJson('/api/projects') : projects,
     ]);
     data = nextData;
