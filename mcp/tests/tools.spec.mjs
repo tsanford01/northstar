@@ -157,7 +157,7 @@ test('a read token keeps read tools and drops write tools after the first refusa
   assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'add_card_note', 'decide_card', 'set_team', 'archive_card', 'restore_card'].includes(name)));
 
   const declared = await connect(t, { baseUrl, token: readToken, scope: 'read' });
-  assert.equal((await declared.client.listTools()).tools.length, 10);
+  assert.equal((await declared.client.listTools()).tools.length, 12);
 });
 
 test('a bad token is refused with the API status, and the token never appears in errors', async (t) => {
