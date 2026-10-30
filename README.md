@@ -227,7 +227,9 @@ immediately. The token from **Menu → API access** and `API_TOKEN` keep working
 Clients that sync from another tracker can find and update records by their own key instead of
 Northstar's numeric id. `GET /api/projects?projectId=OPS-12` and `GET /api/projects?externalUrl=<url>`
 return the matching projects. `GET /api/kanban/cards?externalUrl=<url>` and
-`GET /api/kanban/cards?projectId=<id>` return the matching cards.
+`GET /api/kanban/cards?projectId=<id>` return the matching cards. Cards also take an optional `key` (up to 120
+characters, unique when set) chosen by the client, so a card can be found with `GET /api/kanban/cards?key=<key>`
+even when it has no link. Sending an empty `key` clears it.
 `GET /api/kanban/cards?decision=open` returns cards with a decision that has no `decidedOption` yet.
 
 A card's `nextStep` is free text (up to 1000 characters): the exact next action or command.
@@ -239,7 +241,8 @@ object, and `null` clears it. Both fields work through create, update and
 `PUT /api/kanban/cards/upsert`.
 
 `PUT /api/projects/upsert?key=projectId` (or `key=externalUrl`) and `PUT /api/kanban/cards/upsert`
-(keyed by `externalUrl`) update the one record with that key, or create it if none exists. The
+(keyed by `externalUrl` by default, or `?key=key` for the card's own key) update the one record with that
+key, or create it if none exists. The
 response is `{ created, project }` or `{ created, card }`, with `201` when created and `200` when
 updated, so repeating a request is safe. An update changes only the fields sent; a create needs the
 same fields as `POST`. If more than one record already has the key, the request returns `409`.
