@@ -191,7 +191,7 @@ curl "http://localhost:3000/api/projects?f.status=Blocked&f.team=Platform&sort=s
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/teams` | token endpoint | List teams with their capacity, card and member counts. |
+| `GET` | `/api/teams` | token endpoint | List teams with their capacity, card and member counts (`cardCount` includes archived cards; `boardCardCount` is the unarchived cards on the board). |
 | `POST` | `/api/teams` | token endpoint (admin) | Create a team: `{ "name", "capacity" }`. |
 | `PUT` | `/api/teams/:id` | token endpoint (admin or the team's manager) | Rename or resize a team. |
 | `DELETE` | `/api/teams/:id` | token endpoint (admin) | Delete a team with no projects or cards. |

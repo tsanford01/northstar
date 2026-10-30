@@ -10,6 +10,8 @@
 .list-add-project { display:inline-flex; align-items:center; gap:7px; padding:9px 13px; }
 .project-id,.archive-tag,.retro-tag { display:inline-block; margin-right:8px; padding:3px 5px; border-radius:4px; color:#557166; background:#eef3f0; font-size:8px; letter-spacing:.04em; vertical-align:1px; }.source-link { display:inline-block; margin-left:8px; color:#2f6e5b; font-size:9px; font-weight:750; text-decoration:none; white-space:nowrap; }.source-link:hover,.source-link:focus-visible { text-decoration:underline; }.archive-tag,.retro-tag { margin-left:7px; margin-right:0; color:#68736f; background:#ecefed; }.retro-tag { color:#6f5b34; background:#f7efdc; }.badge { width:max-content; padding:5px 8px; border-radius:20px; background:#eef3f0; color:#557166; font-size:9px; font-weight:700; }.badge.scheduled-to-plan { color:#5f7399; background:#edf2fa; }.badge.scheduled-planning { color:#594c99; background:#efedfa; }.badge.hold { color:#8a6740; background:#f8f0e2; }.badge.blocked { color:#91473d; background:#faeae7; }.badge.complete { color:#68736f; background:#ecefed; }
 .no-results { padding:26px 5px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+.board-notice { display:block; }
+.board-notice + .board-notice { margin-top:4px; }
 
 /* Projects table (#project-rows): sortable headers, optional columns, scrolls sideways when narrow. */
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
