@@ -5,6 +5,7 @@ import { layoutProjectDots } from './matrix-geometry.js';
 import { liveUpdates } from './live-updates.js';
 import { apiTokenDialogState } from './api-token-dialog.js';
 import {
+  emptyTeamBoards,
   findFocusNowOccupant,
   projectLabel,
   projectStatusClass,
@@ -153,6 +154,14 @@ async function load() {
   }
 }
 
+function boardNotice(boards) {
+  return boards.map((board) => {
+    const cards = `${board.cardCount} ${board.cardCount === 1 ? 'card' : 'cards'}`;
+    const subject = boards.length === 1 ? 'This team' : escapeHtml(board.name);
+    return `<span class="board-notice">${subject} has ${cards} on its board. <a href="/kanban.html?teamId=${encodeURIComponent(board.id)}">Open the board</a></span>`;
+  }).join(' ');
+}
+
 function renderSummary(allPortfolioProjects, portfolioProjects, matrixProjects, active) {
   const { total, available } = capacityForTeams(state.teams, allPortfolioProjects, state.selectedTeams);
   $('#active-count').textContent = active.length;
@@ -168,6 +177,11 @@ function renderSummary(allPortfolioProjects, portfolioProjects, matrixProjects, 
     ? (portfolioProjects.some((project) => project.status === 'Complete') && !state.showCompleted ? 'Completed projects are hidden. Use “Show completed” above to include them.' : 'No projects match the current filters.')
     : 'Add current work, score it, and let the trade-offs become visible.';
   $('#empty-add').hidden = hasAnyProjects;
+  const boards = emptyTeamBoards(portfolioProjects, state.teams, state.selectedTeams);
+  if (boards.length) {
+    $('#matrix-empty-title').textContent = 'No projects yet';
+    $('#matrix-empty-copy').innerHTML = boardNotice(boards);
+  }
 }
 
 function renderMatrix(matrixProjects) {
@@ -382,7 +396,7 @@ function toggleExpanded(project) {
   document.querySelector(`.project-row[data-id="${project.id}"]`)?.focus();
 }
 
-function renderProjectList(projects) {
+function renderProjectList(projects, boards = []) {
   $('#project-list-title').textContent = !state.selectedTeams.length ? 'All projects' : `${state.selectedTeams.join(', ')} projects`;
   const columns = visibleColumns(state.columns);
   const shown = sortProjects(applyFilters(projects, state.filters), state.sort);
@@ -406,6 +420,8 @@ function renderProjectList(projects) {
   }).join('');
   $('#project-table').hidden = !shown.length && !filtered;
   $('#project-table-empty').hidden = shown.length > 0;
+  if (boards.length) $('#project-table-empty').innerHTML = boardNotice(boards);
+  else $('#project-table-empty').textContent = 'No projects match this view.';
 }
 
 function render() {
@@ -423,7 +439,7 @@ function render() {
   renderSummary(allPortfolioProjects, portfolioProjects, matrixProjects, active);
   renderMatrix(matrixProjects);
   renderRanking(active);
-  renderProjectList(projects);
+  renderProjectList(projects, emptyTeamBoards(portfolioProjects, state.teams, state.selectedTeams));
 }
 function projectFromTarget(target) {
   const row = target.closest('[data-id]');
@@ -1052,7 +1068,7 @@ load().then(() => {
     }
     [state.projects, state.teams] = await Promise.all([
       kinds.includes('projects') ? request() : state.projects,
-      kinds.includes('teams') ? requestJson('/api/teams') : state.teams,
+      kinds.includes('teams') || kinds.includes('kanban') ? requestJson('/api/teams') : state.teams,
     ]);
     render();
   }, { busy: () => Boolean(state.dragged || state.pendingMove || state.pendingBlockedSave || state.pendingArchiveSave) });
