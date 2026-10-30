@@ -6,3 +6,4 @@ data
 .sbom
 npm-debug.log
 mcp
+!mcp/README.md

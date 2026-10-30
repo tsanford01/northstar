@@ -44,6 +44,8 @@ COPY package.json \
     events-service.mjs \
     kanban-service.mjs ./
 COPY public ./public
+COPY docs/*.md ./docs/
+COPY mcp/README.md ./mcp/README.md
 
 RUN mkdir -p /data && chown -R node:node /app /data
 USER node
