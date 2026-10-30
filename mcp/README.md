@@ -45,13 +45,16 @@ The token comes from your environment, so it is not written into the file:
 |---|---|---|
 | `list_projects` | read | List projects, optionally by `projectId` or `externalUrl` |
 | `get_project` | read | One project by `id` |
-| `list_cards` | read | Kanban cards by `externalUrl`, `projectId`, `assignee`, `tag` or `decision: "open"` |
+| `list_cards` | read | Kanban cards across boards by `key`, `externalUrl`, `projectId`, `teamId`, `assignee`, `tag`, `source` or `decision: "open"`. Archived cards appear only with `archived: "include"` or `"only"`. |
+| `get_card_by_key` | read | One card by its stable `key` |
+| `get_board` | read | A team's board (`teamId`; the first team's board if omitted) |
 | `get_activity` | read | The activity feed (`since`, `limit`) |
 | `list_teams` | read | Teams with capacity and assignments |
 | `status_export` | read | The project status export as CSV |
 | `upsert_project` | write | Create, or update by `key` (`projectId` or `externalUrl`) |
 | `move_project` | write | Set impact and urgency (1–10), with an optional comment |
-| `upsert_card` | write | Create, or update the card with the same `externalUrl` |
+| `upsert_card` | write | Create, or update the card matched by `externalUrl` (default) or, with `key: "key"`, by its own card key |
+| `archive_card`, `restore_card` | write | Archive a card or bring it back |
 | `add_card_note` | write | Add a note to a card |
 | `decide_card` | write | Set a card decision's chosen option |
 | `set_team` | write | Create a team or set its capacity |

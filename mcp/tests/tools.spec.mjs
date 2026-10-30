@@ -51,7 +51,7 @@ test('every tool works against a running Northstar with a write token', async (t
   const { client, call } = await connect(t, { baseUrl, token: writeToken });
 
   const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
-  assert.deepEqual(names, ['add_card_note', 'decide_card', 'get_activity', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'move_project', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
+  assert.deepEqual(names, ['add_card_note', 'archive_card', 'decide_card', 'get_activity', 'get_board', 'get_card_by_key', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'move_project', 'restore_card', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
 
   const team = await call('set_team', { name: 'Platform Ops', capacity: 4 });
   assert.equal(team.isError, false, team.text);
@@ -90,6 +90,25 @@ test('every tool works against a running Northstar with a write token', async (t
   assert.match(exported.text, /Project ID/);
   assert.match(exported.text, /"MCP-1","Agent sync","Platform Ops"/);
 
+  // Card keys, archive and team boards.
+  const keyed = await call('upsert_card', { key: 'key', card: { key: 'sync:T-7', columnId: column.id, title: 'Keyed', source: 'agent' } });
+  assert.equal(keyed.value.created, true, keyed.text);
+  const keyedId = keyed.value.card.id;
+  assert.equal((await call('upsert_card', { key: 'key', card: { key: 'sync:T-7', columnId: column.id, title: 'Keyed again' } })).value.card.id, keyedId);
+  assert.equal((await call('get_card_by_key', { key: 'sync:T-7' })).value.title, 'Keyed again');
+  assert.equal((await call('get_card_by_key', { key: 'missing' })).isError, true);
+  assert.deepEqual((await call('list_cards', { key: 'sync:T-7' })).value.map((item) => item.id), [keyedId]);
+  assert.deepEqual((await call('list_cards', { source: 'agent' })).value.map((item) => item.id), [keyedId]);
+  assert.equal((await call('archive_card', { id: keyedId })).value.archived, true);
+  assert.deepEqual((await call('list_cards', { source: 'agent' })).value, []);
+  assert.deepEqual((await call('list_cards', { source: 'agent', archived: 'only' })).value.map((item) => item.id), [keyedId]);
+  assert.equal((await call('get_card_by_key', { key: 'sync:T-7' })).value.archived, true);
+  assert.equal((await call('restore_card', { id: keyedId })).value.archived, false);
+  const board = await call('get_board', { teamId: column.teamId });
+  assert.ok(board.value.cards.some((item) => item.id === keyedId), board.text);
+  assert.deepEqual((await call('list_cards', { teamId: column.teamId, key: 'sync:T-7' })).value.map((item) => item.id), [keyedId]);
+  assert.deepEqual((await call('list_cards', { teamId: 99999, key: 'sync:T-7' })).value, []);
+
   const invalid = await call('move_project', { id: projectId, impact: 11, urgency: 6 });
   assert.deepEqual([invalid.isError, invalid.text], [true, 'Invalid input: arguments.impact must be from 1 to 10.']);
   assert.equal((await call('add_card_note', { cardId, body: 'x', extra: true })).isError, true);
@@ -110,10 +129,10 @@ test('a read token keeps read tools and drops write tools after the first refusa
   assert.equal(changed, true);
   const names = (await client.listTools()).tools.map((tool) => tool.name);
   assert.ok(names.includes('list_projects'));
-  assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'add_card_note', 'decide_card', 'set_team'].includes(name)));
+  assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'add_card_note', 'decide_card', 'set_team', 'archive_card', 'restore_card'].includes(name)));
 
   const declared = await connect(t, { baseUrl, token: readToken, scope: 'read' });
-  assert.equal((await declared.client.listTools()).tools.length, 6);
+  assert.equal((await declared.client.listTools()).tools.length, 8);
 });
 
 test('a bad token is refused with the API status, and the token never appears in errors', async (t) => {
