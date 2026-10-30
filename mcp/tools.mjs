@@ -25,15 +25,31 @@ export const tools = [
   },
   {
     name: 'list_cards',
-    description: 'List kanban cards, filtered by externalUrl, projectId, assignee, tag, or decision="open".',
+    description: 'List kanban cards across team boards, filtered by key, externalUrl, projectId, teamId, assignee, tag, source or decision="open". Archived cards are left out unless archived is "include" or "only".',
     inputSchema: object({
-      externalUrl: text(2048, 1), projectId: id, assignee: text(80), tag: text(40, 1), decision: { type: 'string', enum: ['open'] },
+      key: text(120, 1), externalUrl: text(2048, 1), projectId: id, teamId: id, assignee: text(80), tag: text(40, 1), source: text(80),
+      decision: { type: 'string', enum: ['open'] }, archived: { type: 'string', enum: ['include', 'only'] },
     }),
-    async run(api, { assignee, tag, ...query }) {
+    async run(api, { assignee, teamId, ...query }) {
       const cards = await api.request('GET', '/api/kanban/cards', { query });
-      return cards.filter((card) => (assignee === undefined || card.assignee === assignee)
-        && (tag === undefined || card.tags?.includes(tag.trim().toLowerCase())));
+      return cards.filter((card) => (assignee === undefined || card.assignee === assignee) && (teamId === undefined || card.teamId === teamId));
     },
+  },
+  {
+    name: 'get_card_by_key',
+    description: 'Get one kanban card by its own stable key (archived cards included).',
+    inputSchema: object({ key: text(120, 1) }, ['key']),
+    async run(api, { key }) {
+      const [card] = await api.request('GET', '/api/kanban/cards', { query: { key, archived: 'include' } });
+      if (!card) throw Object.assign(new Error('Card not found.'), { status: 404 });
+      return card;
+    },
+  },
+  {
+    name: 'get_board',
+    description: "A team's kanban board: its columns and cards. Without teamId, the first team's board.",
+    inputSchema: object({ teamId: id, archived: { type: 'string', enum: ['include', 'only'] } }),
+    run: (api, query) => api.request('GET', '/api/kanban', { query }),
   },
   {
     name: 'get_activity',
@@ -72,9 +88,23 @@ export const tools = [
   {
     name: 'upsert_card',
     write: true,
-    description: 'Create a kanban card, or update the one with the same externalUrl. Repeating a call changes nothing.',
-    inputSchema: object({ card: { type: 'object' } }, ['card']),
-    run: (api, { card }) => api.request('PUT', '/api/kanban/cards/upsert', { body: card }),
+    description: 'Create a kanban card, or update the one whose key matches: its externalUrl (default) or, with key="key", its own card key. Repeating a call changes nothing.',
+    inputSchema: object({ card: { type: 'object' }, key: { type: 'string', enum: ['externalUrl', 'key'] } }, ['card']),
+    run: (api, { card, key }) => api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card }),
+  },
+  {
+    name: 'archive_card',
+    write: true,
+    description: 'Archive a kanban card: it leaves the board but keeps its history and can be restored.',
+    inputSchema: object({ id }, ['id']),
+    run: (api, { id: cardId }) => api.request('PUT', `/api/kanban/cards/${cardId}`, { body: { archived: true } }),
+  },
+  {
+    name: 'restore_card',
+    write: true,
+    description: 'Restore an archived kanban card to its board.',
+    inputSchema: object({ id }, ['id']),
+    run: (api, { id: cardId }) => api.request('PUT', `/api/kanban/cards/${cardId}`, { body: { archived: false } }),
   },
   {
     name: 'add_card_note',
