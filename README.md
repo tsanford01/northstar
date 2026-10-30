@@ -151,6 +151,12 @@ Docker is the only prerequisite. The first run downloads Trivy and its vulnerabi
 Set `IMAGE_REF` to override the tag assigned to the application image, or set `TRIVY_IMAGE` to use
 a different pinned Trivy container version.
 
+## HTTP API
+
+Every endpoint, its authentication and examples are in [docs/api.md](docs/api.md).
+Repeated unknown API tokens from one address get `429` with `Retry-After`; set the limit with
+`TOKEN_AUTH_FAILURES_PER_MINUTE` (default `10`).
+
 ## Bulk project API
 
 Generate a token from **Menu → API access** to enable the token-protected bulk project endpoints.

@@ -35,6 +35,7 @@ COPY package.json \
     postgres-database.mjs \
     postgres-worker.mjs \
     http-utils.mjs \
+    rate-limit.mjs \
     planning-service.mjs \
     project-domain.mjs \
     project-service.mjs \

@@ -9,6 +9,7 @@ import { createSsoSettings } from './sso-settings.mjs';
 import { createKanbanService, KanbanError } from './kanban-service.mjs';
 import { ActivityError, createActivityService } from './activity-service.mjs';
 import { createEventsService } from './events-service.mjs';
+import { createFailureLimiter, positiveInteger } from './rate-limit.mjs';
 
 // Lookup filters from the query string; absent parameters are left out.
 // Requests that never change projects, the board or teams; every other committed write is published.
@@ -20,7 +21,8 @@ function lookupParams(url, names) {
   return Object.fromEntries(names.filter((name) => url.searchParams.has(name)).map((name) => [name, url.searchParams.get(name)]));
 }
 
-export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
+export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresPerMinute = process.env.TOKEN_AUTH_FAILURES_PER_MINUTE } = {}) {
+  const tokenFailures = createFailureLimiter({ limit: positiveInteger(tokenFailuresPerMinute, 10) });
   const ssoSettings = createSsoSettings(db);
   let ssoConfig = ssoSettings.load();
   const auth = createAuthService(db, { signupAllowed: () => ssoConfig.signupAllowed === true, secureCookies: () => ssoConfig.publicUrl?.startsWith('https:') });
@@ -37,6 +39,18 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
 
   async function handle(req, res, url) {
     try {
+      // Too many unknown bearer tokens from one address within a minute locks that address out of token auth.
+      const bearer = url.pathname.startsWith('/api/') && /^Bearer /i.test(String(req.headers.authorization || ''));
+      const clientIp = req.socket.remoteAddress || '';
+      if (bearer) {
+        const retryAfter = tokenFailures.retryAfter(clientIp);
+        if (retryAfter) {
+          res.setHeader('retry-after', String(retryAfter));
+          return json(res, 429, { error: 'Too many failed API token attempts. Try again later.' }), true;
+        }
+      }
+      const bearerAccess = bearer ? apiTokenAccess(db, req, { apiToken }) : null;
+      if (bearer && !bearerAccess) tokenFailures.fail(clientIp);
       const kanbanPath = url.pathname === '/api/kanban' || url.pathname.startsWith('/api/kanban/');
       if (kanbanPath) res.setHeader('cache-control', 'no-store');
       if (url.pathname === '/api/admin/sso') {
@@ -89,7 +103,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN } = {}) {
       const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
       const teamsPath = /^\/api\/(?:teams(?:\/\d+)?|capacity)$/.test(url.pathname);
       const tokenPath = kanbanPath || projectsPath || teamsPath || ['/api/activity', '/api/events', '/api/version'].includes(url.pathname);
-      const tokenAccess = tokenPath ? apiTokenAccess(db, req, { apiToken }) : null;
+      const tokenAccess = tokenPath ? bearerAccess : null;
       if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
       const tokenUser = tokenAccess ? { id: 0, username: tokenAccess.name, role: tokenAccess.scope === 'write' ? 'admin' : 'read_only' } : null;
       const user = tokenUser || sessionUser;
