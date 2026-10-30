@@ -41,12 +41,17 @@ Retry-After: 42
 | `GET` | `/api/auth/status` | public | Setup state, whether the caller is signed in, SSO providers, whether signup is open. |
 | `POST` | `/api/auth/setup` | public, first run only | Create the first admin and sign in. `409` once any user exists. |
 | `POST` | `/api/auth/signup` | public, when signup is allowed | Create a read-only account and sign in. |
-| `POST` | `/api/auth/login` | public | Sign in with a username and password. |
+| `POST` | `/api/auth/login` | public | Sign in with a username and password. Failed attempts are limited (see below). |
 | `POST` | `/api/auth/logout` | public | Clear the session. |
 | `GET` | `/api/auth/me` | session | The signed-in user. |
 | `GET` | `/api/auth/sso/:provider/login` | public | Start an OIDC or SAML sign-in (redirect). |
 | `GET`, `POST` | `/api/auth/sso/:provider/callback` | public | Identity-provider callback (redirect). |
 | `GET` | `/api/auth/sso/:provider/metadata` | public | SAML service-provider metadata (XML). |
+
+After `LOGIN_FAILURES_PER_MINUTE` (default `5`) failed passwords for one username from one address,
+or `LOGIN_IP_FAILURES_PER_MINUTE` (default `20`) from one address across usernames, sign-in from
+that address returns `429` with `Retry-After` until the minute ends. A successful sign-in clears the
+username's count.
 
 ```sh
 curl -c cookies.txt -X POST http://localhost:3000/api/auth/login \
