@@ -1,4 +1,5 @@
 import { escapeHtml, requestJson, showToast } from './browser-utils.js';
+import { liveUpdates } from './live-updates.js';
 
 const list = document.querySelector('#team-settings-list');
 const addForm = document.querySelector('#add-team-form');
@@ -29,6 +30,7 @@ async function load() {
     addForm.hidden = !canEdit;
     teams = await teamRequest();
     render();
+    liveUpdates(['teams'], async () => { teams = await teamRequest(); render(); });
   } catch (error) {
     errorMessage.textContent = error.message;
   }

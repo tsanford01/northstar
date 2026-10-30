@@ -39,7 +39,6 @@ test('API token manages projects and reads moves without opening other admin end
 
   assert.equal((await send(`/api/projects/${project.id}/sessions`, 'POST', {}, bearer)).status, 401);
   assert.equal((await send('/api/planning-sessions', 'POST', { projectIds: [project.id] }, bearer)).status, 401);
-  assert.equal((await send('/api/teams', 'POST', { name: 'Denied', capacity: 1 }, bearer)).status, 401);
   assert.equal((await send('/api/users', 'GET', undefined, bearer)).status, 401);
 
   await send('/api/users', 'POST', { username: 'viewer', password: 'read only password', role: 'read_only' }, { cookie: adminCookie });

@@ -1,4 +1,5 @@
 import { escapeHtml, requestJson, showToast } from './browser-utils.js';
+import { liveUpdates } from './live-updates.js';
 
 const board = document.querySelector('#kanban-board');
 const dialog = document.querySelector('#card-dialog');
@@ -25,6 +26,7 @@ let selectedTag = '';
 let selectedProject = 'all';
 let selectedAssignee = '';
 let selectedDecision = '';
+let dragging = false;
 
 function api(path = '', options) {
   return requestJson(`/api/kanban${path}`, options, 'The board could not be saved.');
@@ -272,6 +274,7 @@ board.addEventListener('dragstart', (event) => {
   if (!canEdit) return;
   const cardElement = event.target.closest('[data-card-id]');
   if (!cardElement) return;
+  dragging = true;
   event.dataTransfer.setData('text/plain', cardElement.dataset.cardId);
   event.dataTransfer.effectAllowed = 'move';
 });
@@ -300,6 +303,7 @@ board.addEventListener('drop', async (event) => {
   try { await api(`/cards/${cardId}`, mutation('PUT', { columnId })); await reload(); showToast('Card moved'); }
   catch (error) { boardError.textContent = error.message; }
 });
+board.addEventListener('dragend', () => dragging = false);
 board.addEventListener('dragend', () => board.querySelectorAll('.drop-target').forEach((element) => element.classList.remove('drop-target')));
 
 form.addEventListener('submit', saveCard);
@@ -344,4 +348,19 @@ try {
   columnForm.hidden = !canEdit;
   [data, projects] = await Promise.all([api(), requestJson('/api/projects')]);
   render();
+  liveUpdates(['kanban', 'projects'], async (kinds) => {
+    // Column lists scroll on their own; keep each where the viewer left it.
+    const scrolls = new Map([...board.querySelectorAll('[data-column-id]')].map((element) => [element.dataset.columnId, element.querySelector('.kanban-card-list')?.scrollTop || 0]));
+    const [nextData, nextProjects] = await Promise.all([
+      kinds.includes('kanban') || kinds.includes('projects') ? api() : data,
+      kinds.includes('projects') ? requestJson('/api/projects') : projects,
+    ]);
+    data = nextData;
+    projects = nextProjects;
+    render();
+    board.querySelectorAll('[data-column-id]').forEach((element) => {
+      const list = element.querySelector('.kanban-card-list');
+      if (list) list.scrollTop = scrolls.get(element.dataset.columnId) || 0;
+    });
+  }, { busy: () => dragging });
 } catch (error) { boardError.textContent = error.message; }

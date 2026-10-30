@@ -36,6 +36,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => console.log(`Northstar is ready at http://localhost:${port}`));
-function shutdown() { server.close(() => { db.close(); process.exit(0); }); }
+function shutdown() { api.close(); server.close(() => { db.close(); process.exit(0); }); }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
