@@ -107,3 +107,111 @@ export function visibleColumns(ids) {
   if (!wanted.size) return COLUMNS;
   return COLUMNS.filter((item) => wanted.has(item.id));
 }
+
+// Column filters: { [column]: { contains } | { in: [values] } | { min, max } }. Text columns match
+// "contains" (any case), Team and Status match any of the chosen values, numbers and dates keep
+// values within min..max (either end optional; dates compare by their YYYY-MM-DD prefix).
+export function filterKind(type) {
+  return type === 'enum' ? 'in' : type === 'number' || type === 'date' ? 'range' : 'contains';
+}
+
+function rangeValue(type, value) {
+  if (value === '' || value === null || value === undefined) return null;
+  if (type === 'number') { const number = Number(value); return Number.isFinite(number) ? number : null; }
+  return String(value).slice(0, 10);
+}
+
+export function normalizeFilters(filters) {
+  const out = {};
+  for (const [columnId, filter] of Object.entries(filters || {})) {
+    const def = byId.get(columnId);
+    if (!def || !filter || typeof filter !== 'object') continue;
+    const kind = filterKind(def.type);
+    if (kind === 'contains') {
+      const text = String(filter.contains ?? '').trim();
+      if (text) out[columnId] = { contains: text };
+    } else if (kind === 'in') {
+      const values = [...new Set((Array.isArray(filter.in) ? filter.in : []).map((value) => String(value)).filter(Boolean))];
+      if (values.length) out[columnId] = { in: values };
+    } else {
+      const min = rangeValue(def.type, filter.min);
+      const max = rangeValue(def.type, filter.max);
+      if (min !== null || max !== null) out[columnId] = { ...(min !== null ? { min } : {}), ...(max !== null ? { max } : {}) };
+    }
+  }
+  return out;
+}
+
+export function matchesQuery(project, query) {
+  const text = String(query || '').trim().toLocaleLowerCase();
+  return !text || `${project.projectId || ''} ${project.name || ''} ${project.team || ''} ${project.description || ''} ${project.externalUrl || ''}`.toLocaleLowerCase().includes(text);
+}
+
+export function applyFilters(projects, filters, query = '') {
+  const active = Object.entries(normalizeFilters(filters)).map(([columnId, filter]) => ({ def: byId.get(columnId), filter }));
+  return projects.filter((project) => matchesQuery(project, query) && active.every(({ def, filter }) => {
+    const value = def.value(project);
+    if (filter.contains !== undefined) return String(value ?? '').toLocaleLowerCase().includes(filter.contains.toLocaleLowerCase());
+    if (filter.in) return filter.in.includes(String(value ?? ''));
+    const comparable = rangeValue(def.type, value);
+    if (comparable === null) return false;
+    return (filter.min === undefined || comparable >= filter.min) && (filter.max === undefined || comparable <= filter.max);
+  }));
+}
+
+// The filter a click on one cell value applies: that exact value.
+export function drillFilter(columnId, project) {
+  const def = byId.get(columnId);
+  if (!def) return null;
+  const value = def.value(project);
+  if (value === '' || value === null || value === undefined) return null;
+  const kind = filterKind(def.type);
+  if (kind === 'in') return { in: [String(value)] };
+  if (kind === 'range') { const exact = rangeValue(def.type, value); return { min: exact, max: exact }; }
+  return { contains: String(value) };
+}
+
+// Table state <-> query string, shared by the page URL, saved views and GET /api/projects:
+// q=text, sort=score:desc,name:asc, cols=name,score, f.<column>=text | value (repeated) | min..max
+export function stateToParams({ query = '', sort = [], columns = [], filters = {} } = {}) {
+  const params = new URLSearchParams();
+  if (String(query).trim()) params.set('q', String(query).trim());
+  const sortText = formatSort(sort);
+  if (sortText) params.set('sort', sortText);
+  const cols = (columns || []).filter((id) => byId.has(id));
+  if (cols.length) params.set('cols', cols.join(','));
+  for (const [columnId, filter] of Object.entries(normalizeFilters(filters))) {
+    if (filter.contains !== undefined) params.set(`f.${columnId}`, filter.contains);
+    else if (filter.in) filter.in.forEach((value) => params.append(`f.${columnId}`, value));
+    else params.set(`f.${columnId}`, `${filter.min ?? ''}..${filter.max ?? ''}`);
+  }
+  return params;
+}
+
+export function paramsToState(input) {
+  const params = input instanceof URLSearchParams ? input : new URLSearchParams(input || '');
+  const filters = {};
+  for (const def of COLUMNS) {
+    const values = params.getAll(`f.${def.id}`);
+    if (!values.length) continue;
+    const kind = filterKind(def.type);
+    if (kind === 'in') filters[def.id] = { in: values };
+    else if (kind === 'contains') filters[def.id] = { contains: values[0] };
+    else {
+      const [min = '', max = ''] = values[0].includes('..') ? values[0].split('..') : [values[0], values[0]];
+      filters[def.id] = { min, max };
+    }
+  }
+  return {
+    query: params.get('q') || '',
+    sort: parseSort(params.get('sort')),
+    columns: (params.get('cols') || '').split(',').filter((id) => byId.has(id)),
+    filters: normalizeFilters(filters),
+  };
+}
+
+// True when the query string carries any table parameter (so the API knows to apply them).
+export function hasTableParams(input) {
+  const params = input instanceof URLSearchParams ? input : new URLSearchParams(input || '');
+  return [...params.keys()].some((key) => key === 'q' || key === 'sort' || key.startsWith('f.'));
+}
