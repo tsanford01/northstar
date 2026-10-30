@@ -153,8 +153,8 @@ test('a read token keeps read tools and drops write tools after the first refusa
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(changed, true);
   const names = (await client.listTools()).tools.map((tool) => tool.name);
-  assert.ok(names.includes('list_projects'));
-  assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'add_card_note', 'decide_card', 'set_team', 'archive_card', 'restore_card'].includes(name)));
+  assert.ok(['list_projects', 'audit_board', 'export_board'].every((name) => names.includes(name)));
+  assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'move_card', 'add_card_note', 'decide_card', 'set_team', 'archive_card', 'restore_card'].includes(name)));
 
   const declared = await connect(t, { baseUrl, token: readToken, scope: 'read' });
   assert.equal((await declared.client.listTools()).tools.length, 12);
