@@ -4,6 +4,7 @@ import {
   FOCUS_MIN_SCORE,
   FOCUS_LIMIT_MESSAGE,
   isFocusProject,
+  isIdea,
   scheduledCapacityConflict,
   validateProject,
 } from './project-domain.mjs';
@@ -231,6 +232,13 @@ export function createProjectService(db) {
       });
     },
 
+    // Idea -> To plan: the proposal becomes a plan and joins the matrix.
+    promote(id, { actor } = {}) {
+      const current = db.prepare('SELECT status, schedule_stage FROM projects WHERE id = ?').get(id);
+      if (!current) throw new ProjectError(404, 'Project not found.');
+      if (!isIdea(current)) throw new ProjectError(409, 'Only an idea can be promoted to plan.');
+      return this.update(id, { scheduleStage: 'To plan', moveSource: 'Promoted to plan' }, { actor });
+    },
     delete: deleteProject,
 
     bulkDelete(projectIds) {

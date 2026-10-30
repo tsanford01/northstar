@@ -65,6 +65,9 @@ test('every tool works against a running Northstar with a write token', async (t
   assert.equal((await call('upsert_project', { key: 'projectId', project })).value.created, false);
   const projectId = created.value.project.id;
   assert.deepEqual((await call('list_projects', { projectId: 'MCP-1' })).value.map((item) => item.id), [projectId]);
+  const idea = await call('upsert_project', { key: 'projectId', project: { projectId: 'MCP-IDEA', name: 'Agent idea', team: 'Platform Ops', status: 'Scheduled', scheduleStage: 'Idea' } });
+  assert.equal(idea.isError, false, idea.text);
+  assert.deepEqual((await call('list_projects', { stage: 'Idea' })).value.map((item) => item.projectId), ['MCP-IDEA']);
   assert.equal((await call('get_project', { id: projectId })).value.name, 'Agent sync');
   assert.equal((await call('get_project', { id: 99999 })).isError, true);
   const moved = await call('move_project', { id: projectId, impact: 7, urgency: 6, comment: 'Raised by the agent' });

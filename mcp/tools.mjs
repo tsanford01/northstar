@@ -9,9 +9,9 @@ const object = (properties, required = []) => ({ type: 'object', properties, req
 export const tools = [
   {
     name: 'list_projects',
-    description: 'List projects, optionally filtered by projectId or externalUrl.',
-    inputSchema: object({ projectId: text(80, 1), externalUrl: text(2048, 1) }),
-    run: (api, args) => api.request('GET', '/api/projects', { query: args }),
+    description: 'List projects, optionally filtered by projectId, externalUrl or the Scheduled stage (stage "Idea" lists the ideas).',
+    inputSchema: object({ projectId: text(80, 1), externalUrl: text(2048, 1), stage: { type: 'string', enum: ['Idea', 'To plan', 'Planning'] } }),
+    run: (api, { stage, ...query }) => api.request('GET', '/api/projects', { query: stage ? { ...query, 'f.stage': stage } : query }),
   },
   {
     name: 'get_project',

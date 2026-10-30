@@ -6,6 +6,8 @@ export const COLUMNS = [
   { id: 'name', label: 'Name', type: 'text', value: (p) => p.name || '' },
   { id: 'team', label: 'Team', type: 'enum', value: (p) => p.team || '' },
   { id: 'status', label: 'Status', type: 'enum', value: (p) => p.status || '' },
+  // A Scheduled project's stage (Idea, To plan, Planning); empty for every other status.
+  { id: 'stage', label: 'Stage', type: 'enum', value: (p) => (p.status === 'Scheduled' ? p.scheduleStage || '' : '') },
   { id: 'impact', label: 'Impact', type: 'number', value: (p) => p.impact },
   { id: 'urgency', label: 'Urgency', type: 'number', value: (p) => p.urgency },
   { id: 'confidence', label: 'Confidence', type: 'number', value: (p) => p.confidence },
@@ -26,7 +28,8 @@ export function column(id) {
 
 // Highest priority first, as the list has always been ordered.
 export const DEFAULT_SORT = [{ column: 'score', direction: 'desc' }, { column: 'updated', direction: 'desc' }];
-export const DEFAULT_COLUMNS = COLUMN_IDS;
+// Stage is off by default (the status badge already shows it); it is there to filter and sort by.
+export const DEFAULT_COLUMNS = COLUMN_IDS.filter((id) => id !== 'stage');
 // Narrow screens start with what fits: name, status and score.
 export const MOBILE_COLUMNS = ['name', 'status', 'score'];
 
@@ -104,7 +107,7 @@ export function ariaSort(sorts, columnId) {
 
 export function visibleColumns(ids) {
   const wanted = new Set((ids || []).filter((id) => byId.has(id)));
-  if (!wanted.size) return COLUMNS;
+  if (!wanted.size) return COLUMNS.filter((item) => DEFAULT_COLUMNS.includes(item.id));
   return COLUMNS.filter((item) => wanted.has(item.id));
 }
 

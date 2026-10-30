@@ -61,6 +61,8 @@
 [data-theme="dark"] .archive-tag,[data-theme="dark"] .badge.complete { color:#aeb8b4; background:#2d3532; }
 [data-theme="dark"] .retro-tag { color:#d4bd87; background:#38301f; }
 [data-theme="dark"] .badge.scheduled-to-plan { color:#b0c2e0; background:#273448; }
+[data-theme="dark"] .badge.scheduled-idea { color:#c9c2b0; background:#36322a; }
+[data-theme="dark"] .project-table .provisional { color:#8c958f; }
 [data-theme="dark"] .badge.scheduled-planning { color:#c3b9ee; background:#302c49; }
 [data-theme="dark"] .badge.hold { color:#e0ba81; background:#3d3020; }
 [data-theme="dark"] .badge.blocked { color:#efaa9e; background:#472925; }

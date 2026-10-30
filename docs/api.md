@@ -117,10 +117,11 @@ curl -b cookies.txt -X POST http://localhost:3000/api/api-tokens \
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/projects` | token endpoint | List projects. Filter with `?projectId=` or `?externalUrl=`, and sort or filter like the projects table (below). |
-| `POST` | `/api/projects` | token endpoint | Create a project. `name`, `impact`, `urgency`, `confidence` and `effort` are required. |
+| `POST` | `/api/projects` | token endpoint | Create a project. `name`, `impact`, `urgency`, `confidence` and `effort` are required, except for an idea (below). |
 | `PUT` | `/api/projects/:id` | token endpoint | Partially update a project. |
 | `DELETE` | `/api/projects/:id` | token endpoint | Delete a project. `204`. |
 | `PUT` | `/api/projects/upsert?key=projectId` | token endpoint | Create or update by `projectId` (or `key=externalUrl`). Returns `{ created, project }`, `201` when created, `200` when updated. |
+| `POST` | `/api/projects/:id/promote` | token endpoint (admin or the team's manager) | Promote an idea to a plan: its `scheduleStage` goes from `Idea` to `To plan`, and it joins the matrix. `409` if the project is not an idea. |
 | `GET` | `/api/projects/:id/moves` | token endpoint | Matrix movement history for one project. |
 | `POST` | `/api/projects/bulk/add` | write token | Create up to 100 projects atomically: `{ "projects": [...] }`. |
 | `POST` | `/api/projects/bulk/archive` | write token | Archive projects: `{ "projectIds": [...] }`. |
@@ -128,7 +129,13 @@ curl -b cookies.txt -X POST http://localhost:3000/api/api-tokens \
 
 Optional project fields: `projectId`, `externalUrl`, `description`, `retrospective`, `blockedNote`,
 `archiveNote`, `restoreNote`, `team`, `status` (`Scheduled`, `Active`, `On hold`, `Blocked`,
-`Complete`), `scheduleStage`, `capacity`, `archived`, `hiddenFromReadOnly`.
+`Complete`), `scheduleStage` (`Idea`, `To plan` or `Planning`, for a `Scheduled` project), `capacity`, `archived`,
+`hiddenFromReadOnly`.
+
+**Ideas.** A `Scheduled` project with `scheduleStage: "Idea"` is a proposal that is not a plan yet. Its
+scores are optional (each one left out is `5`) and the page shows them as provisional. Ideas stay
+off the priority matrix and out of Focus Now unless the viewer turns on *Show ideas*. List them with
+`f.stage=Idea`; promote one with `POST /api/projects/:id/promote`.
 
 Table parameters, the same ones the projects table puts in its URL:
 
@@ -137,7 +144,7 @@ Table parameters, the same ones the projects table puts in its URL:
 | `sort` | `sort=score:desc,name:asc` | Sort keys in order; `asc` or `desc`. Default `score:desc,updated:desc`. |
 | `q` | `q=billing` | Text in the ID, name, team, description or source link. |
 | `f.<column>` (text) | `f.name=api` | Contains, any case. Text columns: `id`, `name`. |
-| `f.<column>` (choice) | `f.team=Platform&f.team=Design` | Any of the repeated values. Choice columns: `team`, `status`. |
+| `f.<column>` (choice) | `f.team=Platform&f.team=Design` | Any of the repeated values. Choice columns: `team`, `status`, `stage` (a Scheduled project's stage; empty for other statuses). |
 | `f.<column>` (range) | `f.impact=5..`, `f.updated=2026-01-01..2026-01-31` | Inclusive `min..max`, either end optional; a single value means exactly it. Range columns: `impact`, `urgency`, `confidence`, `effort`, `people`, `score`, `cards`, `decisions`, `updated`. |
 
 Unknown columns are ignored. A `cols=` parameter (shown columns) is accepted and ignored by the API.
