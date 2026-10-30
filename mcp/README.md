@@ -64,7 +64,7 @@ comes back as the tool result (`Northstar returned HTTP <status>: <message>`), n
 From the repository root, after installing both packages:
 
 ```sh
-node --test mcp/tests/
+node --test 'mcp/tests/*.spec.mjs'
 ```
 
 The tests start a real Northstar on a free port with a temporary data directory, and drive every

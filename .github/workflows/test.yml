@@ -73,4 +73,4 @@ jobs:
           pnpm --dir mcp install --frozen-lockfile
 
       - name: Run MCP server tests
-        run: node --test mcp/tests/
+        run: node --test 'mcp/tests/*.spec.mjs'

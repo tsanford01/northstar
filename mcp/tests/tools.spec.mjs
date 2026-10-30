@@ -1,4 +1,4 @@
-// Run from the repository root (`node --test mcp/tests/`): the fixture starts ./server.mjs there.
+// Run from the repository root (`node --test 'mcp/tests/*.spec.mjs'`): the fixture starts ./server.mjs there.
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
