@@ -158,7 +158,9 @@ default `20`); limited requests get `429` with `Retry-After`.
 
 ## HTTP API
 
-Every endpoint, its authentication and examples are in [docs/api.md](docs/api.md).
+Every endpoint, its authentication and examples are in [docs/api.md](docs/api.md). Signed-in users can also
+read it, and the [MCP server guide](mcp/README.md), under **Menu → Docs**; the page renders these
+same files.
 Repeated unknown API tokens from one address get `429` with `Retry-After`; set the limit with
 `TOKEN_AUTH_FAILURES_PER_MINUTE` (default `10`).
 

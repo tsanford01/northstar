@@ -10,6 +10,13 @@ import { createKanbanService, KanbanError } from './kanban-service.mjs';
 import { ActivityError, createActivityService } from './activity-service.mjs';
 import { createEventsService } from './events-service.mjs';
 import { createFailureLimiter, positiveInteger } from './rate-limit.mjs';
+import { readFile } from 'node:fs/promises';
+
+// The docs page reads these two files and nothing else; no part of the request reaches the filesystem.
+const DOCS = Object.freeze({
+  api: new URL('./docs/api.md', import.meta.url),
+  mcp: new URL('./mcp/README.md', import.meta.url),
+});
 
 // Lookup filters from the query string; absent parameters are left out.
 // Requests that never change projects, the board or teams; every other committed write is published.
@@ -90,6 +97,15 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       }
       if (url.pathname === '/api/auth/logout' && req.method === 'POST') { auth.logout(req, res); return json(res, 200, { ok: true }), true; }
       if (url.pathname === '/api/auth/me' && req.method === 'GET') return json(res, 200, requireUser(req)), true;
+      if (url.pathname.startsWith('/api/docs/')) {
+        requireUser(req);
+        const name = url.pathname.slice('/api/docs/'.length);
+        if (!Object.hasOwn(DOCS, name)) return json(res, 404, { error: 'Document not found.' }), true;
+        if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed.' }), true;
+        res.writeHead(200, { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
+        res.end(await readFile(DOCS[name], 'utf8'));
+        return true;
+      }
 
       const usersMatch = url.pathname.match(/^\/api\/users(?:\/(\d+))?$/);
       if (usersMatch) {
