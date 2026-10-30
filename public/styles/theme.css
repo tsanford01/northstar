@@ -25,7 +25,7 @@
 .app-menu-item.primary:hover,.app-menu-item.primary:focus-visible { background:#1b4036; }
 .app-menu-item.primary>span,.app-menu-item.primary small { color:#e7f2ed; }
 
-[data-theme="dark"] { --ink:#e8eeeb; --muted:#9ba8a3; --line:#34423e; --paper:#101715; --white:#18211e; --green:#91c7b5; --green-2:#253a33; --coral:#df9482; --shadow:0 14px 40px rgb(0 0 0 / 22%); }
+[data-theme="dark"] { color-scheme:dark; --ink:#e8eeeb; --muted:#9ba8a3; --line:#34423e; --paper:#101715; --white:#18211e; --green:#91c7b5; --green-2:#253a33; --coral:#df9482; --shadow:0 14px 40px rgb(0 0 0 / 22%); }
 [data-theme="dark"] body,[data-theme="dark"] html { background:var(--paper); }
 [data-theme="dark"] .brand-mark,[data-theme="dark"] .button.primary { color:#102019; background:#8fc7b4; border-color:#8fc7b4; }
 [data-theme="dark"] .button.secondary,[data-theme="dark"] .theme-toggle,[data-theme="dark"] .team-filter,[data-theme="dark"] .search,[data-theme="dark"] dialog,[data-theme="dark"] .icon-button,[data-theme="dark"] .team-settings-card,[data-theme="dark"] .summary { background:var(--white); }
