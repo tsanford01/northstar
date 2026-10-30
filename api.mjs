@@ -192,13 +192,13 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       if (url.pathname === '/api/kanban/cards/upsert') {
         requireUserAdmin();
         if (req.method !== 'PUT') return json(res, 405, { error: 'Method not allowed.' }), true;
-        const result = kanban.upsertCard(await readJson(req), { actor: user.username });
+        const result = kanban.upsertCard(await readJson(req), { key: url.searchParams.get('key') ?? 'externalUrl', actor: user.username });
         return json(res, result.created ? 201 : 200, result), true;
       }
       if (cardMatch) {
         const id = cardMatch[1] ? Number(cardMatch[1]) : null;
         if (req.method === 'GET' && id) return json(res, 200, kanban.getCard(id, { includeHidden: user.role === 'admin' })), true;
-        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['externalUrl', 'projectId', 'decision']), includeHidden: user.role === 'admin' })), true;
+        if (req.method === 'GET') return json(res, 200, kanban.findCards({ ...lookupParams(url, ['key', 'externalUrl', 'projectId', 'decision']), includeHidden: user.role === 'admin' })), true;
         requireUserAdmin();
         if (req.method === 'POST' && !id) return json(res, 201, kanban.createCard(await readJson(req))), true;
         if (req.method === 'PUT' && id) return json(res, 200, kanban.updateCard(id, await readJson(req), { actor: user.username })), true;
