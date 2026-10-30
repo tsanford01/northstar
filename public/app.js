@@ -16,7 +16,7 @@ import {
   normalizeFilters, paramsToState, sortProjects, stateToParams, toggleSort, visibleColumns,
 } from './shared/project-table.js';
 
-const state = { sort: DEFAULT_SORT, columns: null, filters: {}, expanded: new Set(), cards: new Map(), user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
+const state = { views: [], sort: DEFAULT_SORT, columns: null, filters: {}, expanded: new Set(), cards: new Map(), user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
 const matrix = $('#matrix');
 const dialog = $('#project-dialog');
 const planningSetupDialog = $('#planning-setup-dialog');
@@ -147,6 +147,7 @@ async function load() {
     loadTablePrefs();
     renderColumnMenu();
     render();
+    loadViews();
   } catch (error) {
     toast(error.message);
   }
@@ -271,6 +272,47 @@ function projectCell(project, column) {
     case 'updated': { const { iso, text } = formatUpdated(project.updatedAt); return iso ? drill(column, `<time datetime="${iso}">${escapeHtml(text)}</time>`, text) : escapeHtml(text); }
     default: return value === '' || value === null || value === undefined ? '' : drill(column, escapeHtml(String(value)), `${column.label} ${value}`);
   }
+}
+
+function renderViews() {
+  $('#views-list').innerHTML = state.views.length ? state.views.map((view) => `
+    <li><button type="button" class="text-button" data-apply-view="${view.id}">${escapeHtml(view.name)}</button><button type="button" class="icon-button" data-delete-view="${view.id}" aria-label="Delete view ${escapeHtml(view.name)}">×</button></li>`).join('')
+    : '<li class="views-empty">No saved views yet.</li>';
+}
+
+async function loadViews() {
+  try {
+    state.views = await requestJson('/api/views');
+    $('#views-menu').hidden = false;
+    renderViews();
+  } catch { $('#views-menu').hidden = true; /* no user to keep views for (development mode) */ }
+}
+
+function applyView(view) {
+  const next = paramsToState(view.params);
+  state.query = next.query;
+  $('#search').value = next.query;
+  state.sort = next.sort.length ? next.sort : DEFAULT_SORT;
+  state.columns = next.columns.length ? next.columns : (matchMedia('(max-width: 620px)').matches ? MOBILE_COLUMNS : DEFAULT_COLUMNS);
+  state.filters = next.filters;
+  state.expanded.clear();
+  saveTablePrefs();
+  renderColumnMenu();
+  renderFilterRow(visibleColumns(state.columns), { force: true });
+  render();
+  $('#views-menu').open = false;
+  toast(`Showing “${view.name}”`);
+}
+
+async function saveView(name) {
+  const params = stateToParams(tableState()).toString();
+  const existing = state.views.find((view) => view.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+  const saved = existing
+    ? await requestJson(`/api/views/${existing.id}`, { method: 'PUT', body: JSON.stringify({ params }), headers: { 'content-type': 'application/json' } })
+    : await requestJson('/api/views', { method: 'POST', body: JSON.stringify({ name, params }), headers: { 'content-type': 'application/json' } });
+  state.views = [...state.views.filter((view) => view.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name));
+  renderViews();
+  toast(existing ? `Updated “${saved.name}”` : `Saved “${saved.name}”`);
 }
 
 function renderColumnMenu() {
@@ -934,6 +976,25 @@ $('#project-table-filters').addEventListener('input', (event) => {
   if (summary) summary.textContent = state.filters[columnId]?.in?.length ? `${state.filters[columnId].in.length} chosen` : 'Any';
   clearTimeout(filterTimer);
   filterTimer = setTimeout(() => { saveTablePrefs(); render(); }, 120);
+});
+$('#views-list').addEventListener('click', async (event) => {
+  const apply = event.target.closest('[data-apply-view]');
+  const remove = event.target.closest('[data-delete-view]');
+  const view = state.views.find((item) => item.id === Number((apply || remove)?.dataset.applyView || (apply || remove)?.dataset.deleteView));
+  if (!view) return;
+  if (apply) { applyView(view); return; }
+  if (!confirm(`Delete the view “${view.name}”?`)) return;
+  try {
+    await requestJson(`/api/views/${view.id}`, { method: 'DELETE' });
+    state.views = state.views.filter((item) => item.id !== view.id);
+    renderViews();
+  } catch (error) { toast(error.message); }
+});
+$('#views-save').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const name = $('#view-name').value.trim();
+  if (!name) return;
+  try { await saveView(name); $('#view-name').value = ''; } catch (error) { toast(error.message); }
 });
 $('#clear-filters').addEventListener('click', () => {
   state.filters = {};

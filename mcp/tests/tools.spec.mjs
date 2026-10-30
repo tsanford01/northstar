@@ -51,7 +51,7 @@ test('every tool works against a running Northstar with a write token', async (t
   const { client, call } = await connect(t, { baseUrl, token: writeToken });
 
   const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
-  assert.deepEqual(names, ['add_card_note', 'archive_card', 'decide_card', 'get_activity', 'get_board', 'get_card_by_key', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'move_project', 'restore_card', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
+  assert.deepEqual(names, ['add_card_note', 'apply_view', 'archive_card', 'decide_card', 'get_activity', 'get_board', 'get_card_by_key', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'list_views', 'move_project', 'restore_card', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
 
   const team = await call('set_team', { name: 'Platform Ops', capacity: 4 });
   assert.equal(team.isError, false, team.text);
@@ -114,6 +114,23 @@ test('every tool works against a running Northstar with a write token', async (t
   assert.equal((await call('add_card_note', { cardId, body: 'x', extra: true })).isError, true);
 });
 
+test('saved views are listed and applied through the token owner', async (t) => {
+  const { baseUrl, send, owner, token } = await startNorthstar(t);
+  for (const [name, impact] of [['Alpha', 9], ['Bravo', 3], ['Charlie', 6]]) {
+    await send('/api/projects', 'POST', { name, impact, urgency: 4, confidence: 5, effort: 5 }, owner);
+  }
+  const view = await send('/api/views', 'POST', { name: 'Big bets', params: 'f.impact=5..&sort=name:desc' }, owner);
+  const { call } = await connect(t, { baseUrl, token: await token('Views reader', 'read') });
+
+  assert.deepEqual((await call('list_views')).value.map((item) => item.name), ['Big bets']);
+  const byName = await call('apply_view', { name: 'big BETS' });
+  assert.equal(byName.isError, false, byName.text);
+  assert.deepEqual(byName.value.projects.map((project) => project.name), ['Charlie', 'Alpha']);
+  assert.deepEqual((await call('apply_view', { id: view.id })).value.view, { id: view.id, name: 'Big bets', params: view.params });
+  assert.equal((await call('apply_view', { name: 'missing' })).text, 'Northstar returned HTTP 404: View not found.');
+  assert.equal((await call('apply_view', {})).isError, true);
+});
+
 test('a read token keeps read tools and drops write tools after the first refusal', async (t) => {
   const { baseUrl, token } = await startNorthstar(t);
   const readToken = await token('Reader', 'read');
@@ -132,7 +149,7 @@ test('a read token keeps read tools and drops write tools after the first refusa
   assert.ok(!names.some((name) => ['upsert_project', 'move_project', 'upsert_card', 'add_card_note', 'decide_card', 'set_team', 'archive_card', 'restore_card'].includes(name)));
 
   const declared = await connect(t, { baseUrl, token: readToken, scope: 'read' });
-  assert.equal((await declared.client.listTools()).tools.length, 8);
+  assert.equal((await declared.client.listTools()).tools.length, 10);
 });
 
 test('a bad token is refused with the API status, and the token never appears in errors', async (t) => {

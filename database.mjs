@@ -259,6 +259,7 @@ function createRelatedTables(db) {
   ensureColumn(db, 'api_tokens', 'created_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
   ensureColumn(db, 'portfolio_settings', 'api_token_hash', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'portfolio_settings', 'api_token_created_at', 'TEXT');
+  ensureColumn(db, 'portfolio_settings', 'api_token_created_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
   ensureColumn(db, 'project_moves', 'comment', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'planning_session_projects', 'revealed', 'INTEGER NOT NULL DEFAULT 0 CHECK(revealed IN (0, 1))');
   ensureColumn(db, 'planning_session_projects', 'move_comment', "TEXT NOT NULL DEFAULT ''");
@@ -377,6 +378,19 @@ function migratePlanningVotes(db) {
   `));
 }
 
+// Saved views of the projects table, one set per user.
+function migrateSavedViews(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS saved_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    params TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_saved_views_user ON saved_views(user_id)');
+}
+
 export function databaseConfig(env = process.env) {
   const client = (env.DATABASE_CLIENT || 'sqlite').trim().toLowerCase();
   if (!['sqlite', 'postgres'].includes(client)) throw new Error('DATABASE_CLIENT must be sqlite or postgres.');
@@ -399,6 +413,7 @@ export function openDatabase(filePath, { client = 'sqlite', connectionString } =
         migrateTeamWorkspace(db);
         migrateTeamManagerRole(db);
         migratePlanningVotes(db);
+        migrateSavedViews(db);
         db.exec(`
           CREATE INDEX IF NOT EXISTS idx_planning_room_projects ON planning_session_projects(session_id, position);
           CREATE INDEX IF NOT EXISTS idx_planning_votes_session_project ON planning_votes(session_id, project_id, updated_at);
@@ -418,6 +433,7 @@ export function openDatabase(filePath, { client = 'sqlite', connectionString } =
   migrateTeamWorkspace(db);
   migrateTeamManagerRole(db);
   migratePlanningVotes(db);
+  migrateSavedViews(db);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_planning_room_projects ON planning_session_projects(session_id, position);
     CREATE INDEX IF NOT EXISTS idx_planning_votes_session_project ON planning_votes(session_id, project_id, updated_at);

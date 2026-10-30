@@ -158,6 +158,35 @@ curl -X POST http://localhost:3000/api/projects \
 The bulk endpoints return `503` when no write token is configured. Add and archive return
 `{ count, projects }`; delete returns `{ count, projectIds }`.
 
+## Saved views
+
+A view is a name plus the projects table's parameters (the same `q`, `sort`, `cols` and `f.<column>`
+the table puts in its URL and `GET /api/projects` accepts). Views belong to one person: the signed-in
+user, or the user who created the API token in use. The token generated on the admin page belongs to
+the admin who generated it (regenerate one made before views existed, which has no recorded creator).
+The `API_TOKEN` environment variable belongs to nobody, so it gets `400` here. Read tokens may list
+and read views but not change them.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/views` | token endpoint | Your views, by name. |
+| `GET` | `/api/views/:id` | token endpoint | One view. |
+| `POST` | `/api/views` | token endpoint | Save a view: `{ "name", "params" }`. `201`; `409` if you already have that name (any case). |
+| `PUT` | `/api/views/:id` | token endpoint | Rename it or replace its `params`. |
+| `DELETE` | `/api/views/:id` | token endpoint | Delete it. `204`. |
+
+`params` is a query string or a table state object (`{ query, sort: [{ column, direction }], columns, filters }`).
+It is stored in canonical form: unknown columns and empty filters are dropped. Each view comes back
+with `params` and the parsed `state`. Apply a view by appending its `params` to `/api/projects?`
+or to the page URL (`/?<params>`). Up to 100 views per user.
+
+```sh
+curl -X POST http://localhost:3000/api/views \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Blocked on Platform","params":"f.status=Blocked&f.team=Platform&sort=score:desc"}'
+curl "http://localhost:3000/api/projects?f.status=Blocked&f.team=Platform&sort=score:desc" -H "Authorization: Bearer $TOKEN"
+```
+
 ## Teams and capacity
 
 | Method | Path | Auth | Purpose |
