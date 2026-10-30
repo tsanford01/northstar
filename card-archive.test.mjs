@@ -29,6 +29,9 @@ test('cards can be archived and restored, are hidden by default, and filter by t
   assert.equal(archived.archived, true);
   assert.match(archived.archivedAt, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal((await send(`/api/kanban/cards/${synced.id}`, 'PUT', { title: 'Synced again' }).then((response) => response.json())).archivedAt, archived.archivedAt);
+  const archiveEvents = async () => (await read('/api/activity?limit=500')).items
+    .filter((item) => item.cardId === synced.id && ['card.archived', 'card.restored'].includes(item.type)).map((item) => item.type);
+  assert.deepEqual(await archiveEvents(), ['card.archived']);
 
   assert.deepEqual(ids((await read('/api/kanban')).cards), [manual.id]);
   assert.deepEqual(ids((await read('/api/kanban?archived=include')).cards), [synced.id, manual.id]);
@@ -56,4 +59,5 @@ test('cards can be archived and restored, are hidden by default, and filter by t
   const unarchived = await send(`/api/kanban/cards/${synced.id}`, 'PUT', { archived: false }).then((response) => response.json());
   assert.deepEqual([unarchived.archived, unarchived.archivedAt], [false, null]);
   assert.deepEqual(ids((await read('/api/kanban')).cards), [synced.id, manual.id]);
+  assert.deepEqual(await archiveEvents(), ['card.restored']);
 });
