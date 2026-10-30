@@ -109,6 +109,11 @@ test('every tool works against a running Northstar with a write token', async (t
   assert.equal((await call('restore_card', { id: keyedId })).value.archived, false);
   const board = await call('get_board', { teamId: column.teamId });
   assert.ok(board.value.cards.some((item) => item.id === keyedId), board.text);
+  const allBoards = await call('get_board', { team: 'all' });
+  assert.equal(allBoards.isError, false, allBoards.text);
+  assert.ok(allBoards.value.teams.some((item) => item.id === column.teamId), allBoards.text);
+  assert.equal(allBoards.value.cards.find((item) => item.id === keyedId).teamName, allBoards.value.teams.find((item) => item.id === column.teamId).name);
+  assert.equal((await call('get_board', { team: 'some' })).isError, true);
   assert.deepEqual((await call('list_cards', { teamId: column.teamId, key: 'sync:T-7' })).value.map((item) => item.id), [keyedId]);
   assert.deepEqual((await call('list_cards', { teamId: 99999, key: 'sync:T-7' })).value, []);
 

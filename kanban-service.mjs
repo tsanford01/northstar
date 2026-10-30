@@ -1,4 +1,5 @@
 import { transaction } from './database.mjs';
+import { mergeBoards } from './public/shared/kanban-boards.js';
 
 export class KanbanError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -208,6 +209,10 @@ export function createKanbanService(db) {
       cards.forEach((item) => { item.tags = cardTags.get(item.id) || []; item.archived = Boolean(item.archived); item.decision = parseDecision(item.decision); });
       return { columns, cards };
     },
+    // Every board in `teams` ([{ id, name, includeHidden }]) as one board; see mergeBoards.
+    listAll({ teams = [], archived } = {}) {
+      return mergeBoards(teams.map((team) => ({ team, ...this.list({ includeHidden: team.includeHidden, archived, teamId: team.id }) })));
+    },
     createColumn(input) {
       const name = requiredText(input?.name, 'Column name', 80);
       const teamId = input?.teamId || defaultTeamId();
@@ -266,7 +271,7 @@ export function createKanbanService(db) {
       const current = card(id);
       checkTeam(current.teamId, input?.teamId);
       const columnId = input?.columnId === undefined ? current.columnId : positiveId(input.columnId, 'Column');
-      checkTeam(column(columnId).teamId, current.teamId);
+      if (column(columnId).teamId !== current.teamId) throw new KanbanError(400, "A card can only move to a column on its own team's board.");
       const title = input?.title === undefined ? current.title : requiredText(input.title, 'Card title', 200);
       const description = input?.description === undefined ? current.description : optionalText(input.description, 'Description', 2000);
       const assignee = input?.assignee === undefined ? current.assignee : optionalText(input.assignee, 'Assignee', 80);
