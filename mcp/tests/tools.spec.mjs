@@ -85,10 +85,10 @@ test('every tool works against a running Northstar with a write token', async (t
 
   const activity = await call('get_activity', { limit: 50 });
   assert.ok(activity.value.items.some((item) => item.type === 'project.moved' && item.comment === 'Raised by the agent'));
-  // The status export is still browser-session only; the tool reports the API's answer as-is.
   const exported = await call('status_export');
-  assert.equal(exported.isError, true);
-  assert.match(exported.text, /^Northstar returned HTTP 401: /);
+  assert.equal(exported.isError, false, exported.text);
+  assert.match(exported.text, /Project ID/);
+  assert.match(exported.text, /"MCP-1","Agent sync","Platform Ops"/);
 
   const invalid = await call('move_project', { id: projectId, impact: 11, urgency: 6 });
   assert.deepEqual([invalid.isError, invalid.text], [true, 'Invalid input: arguments.impact must be from 1 to 10.']);

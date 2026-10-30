@@ -48,7 +48,7 @@ The token comes from your environment, so it is not written into the file:
 | `list_cards` | read | Kanban cards by `externalUrl`, `projectId`, `assignee`, `tag` or `decision: "open"` |
 | `get_activity` | read | The activity feed (`since`, `limit`) |
 | `list_teams` | read | Teams with capacity and assignments |
-| `status_export` | read | The status CSV. The API currently allows this only for browser sessions, so tokens get its 401. |
+| `status_export` | read | The project status export as CSV |
 | `upsert_project` | write | Create, or update by `key` (`projectId` or `externalUrl`) |
 | `move_project` | write | Set impact and urgency (1–10), with an optional comment |
 | `upsert_card` | write | Create, or update the card with the same `externalUrl` |
