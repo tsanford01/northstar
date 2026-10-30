@@ -15,6 +15,18 @@ const selectColumns = `
   (SELECT COUNT(*) FROM kanban_cards WHERE project_id = projects.id) AS cardCount
 `;
 
+// Open decisions per project: linked, unarchived cards whose decision has no decided option.
+// Read in JS because the decision is JSON text and the SQL dialect differs per backend.
+function countOpenDecisions(db) {
+  const counts = new Map();
+  for (const { projectId, decision } of db.prepare("SELECT project_id AS projectId, decision FROM kanban_cards WHERE project_id IS NOT NULL AND archived = 0 AND decision != ''").all()) {
+    let decided = '';
+    try { decided = JSON.parse(decision)?.decidedOption || ''; } catch { continue; }
+    if (!decided) counts.set(projectId, (counts.get(projectId) || 0) + 1);
+  }
+  return counts;
+}
+
 const BULK_LIMIT = 100;
 const upsertKeys = { projectId: 'project_id', externalUrl: 'external_url' };
 
@@ -137,7 +149,9 @@ export function createProjectService(db) {
       if (projectId !== undefined) { conditions.push('project_id = ?'); params.push(upsertKeyValue('projectId', projectId)); }
       if (externalUrl !== undefined) { conditions.push('external_url = ?'); params.push(upsertKeyValue('externalUrl', externalUrl)); }
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-      return db.prepare(`SELECT ${selectColumns} FROM projects ${where} ORDER BY score DESC, updated_at DESC`).all(...params);
+      const rows = db.prepare(`SELECT ${selectColumns} FROM projects ${where} ORDER BY score DESC, updated_at DESC`).all(...params);
+      const open = countOpenDecisions(db);
+      return rows.map((row) => ({ ...row, openDecisionCount: open.get(row.id) || 0 }));
     },
 
     // Creates the project, or updates the one project whose projectId or externalUrl matches; repeating a request changes nothing.
