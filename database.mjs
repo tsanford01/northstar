@@ -267,6 +267,9 @@ function createRelatedTables(db) {
   ensureColumn(db, 'kanban_cards', 'next_step', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'kanban_cards', 'decision', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'kanban_cards', 'card_key', 'TEXT');
+  ensureColumn(db, 'kanban_cards', 'archived', 'INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1))');
+  ensureColumn(db, 'kanban_cards', 'archived_at', 'TEXT');
+  ensureColumn(db, 'kanban_cards', 'source', "TEXT NOT NULL DEFAULT ''");
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_kanban_cards_key ON kanban_cards(card_key) WHERE card_key IS NOT NULL');
   ensureColumn(db, 'projects', 'hidden_from_read_only', 'INTEGER NOT NULL DEFAULT 0 CHECK(hidden_from_read_only IN (0, 1))');
   db.exec(`

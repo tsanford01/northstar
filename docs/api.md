@@ -41,12 +41,17 @@ Retry-After: 42
 | `GET` | `/api/auth/status` | public | Setup state, whether the caller is signed in, SSO providers, whether signup is open. |
 | `POST` | `/api/auth/setup` | public, first run only | Create the first admin and sign in. `409` once any user exists. |
 | `POST` | `/api/auth/signup` | public, when signup is allowed | Create a read-only account and sign in. |
-| `POST` | `/api/auth/login` | public | Sign in with a username and password. |
+| `POST` | `/api/auth/login` | public | Sign in with a username and password. Failed attempts are limited (see below). |
 | `POST` | `/api/auth/logout` | public | Clear the session. |
 | `GET` | `/api/auth/me` | session | The signed-in user. |
 | `GET` | `/api/auth/sso/:provider/login` | public | Start an OIDC or SAML sign-in (redirect). |
 | `GET`, `POST` | `/api/auth/sso/:provider/callback` | public | Identity-provider callback (redirect). |
 | `GET` | `/api/auth/sso/:provider/metadata` | public | SAML service-provider metadata (XML). |
+
+After `LOGIN_FAILURES_PER_MINUTE` (default `5`) failed passwords for one username from one address,
+or `LOGIN_IP_FAILURES_PER_MINUTE` (default `20`) from one address across usernames, sign-in from
+that address returns `429` with `Retry-After` until the minute ends. A successful sign-in clears the
+username's count.
 
 ```sh
 curl -c cookies.txt -X POST http://localhost:3000/api/auth/login \
@@ -152,15 +157,15 @@ curl http://localhost:3000/api/capacity -H "Authorization: Bearer $TOKEN"
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/kanban` | token endpoint | Columns and cards, with tags and project links. |
+| `GET` | `/api/kanban` | token endpoint | Columns and cards, with tags and project links. Archived cards only with `?archived=include` or `?archived=only`. |
 | `GET` | `/api/kanban/projects` | token endpoint | Project ids and names for card links. |
 | `GET` | `/api/kanban/report` | token endpoint | Every card's column history and durations. |
 | `POST` | `/api/kanban/columns` | token endpoint | Create a column: `{ "name" }`. |
 | `PUT`, `DELETE` | `/api/kanban/columns/:id` | token endpoint | Rename or delete a column (and its cards). |
-| `GET` | `/api/kanban/cards` | token endpoint | Find cards by `?externalUrl=`, `?projectId=` or `?decision=open`. |
+| `GET` | `/api/kanban/cards` | token endpoint | Find cards by `?key=`, `?externalUrl=`, `?projectId=`, `?decision=open`, `?tag=` or `?source=`; add `?archived=include` or `?archived=only` for archived cards. |
 | `POST` | `/api/kanban/cards` | token endpoint | Create a card: `columnId` and `title` required. |
-| `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | token endpoint | Read, partially update (including `columnId` to move) or delete a card. |
-| `PUT` | `/api/kanban/cards/upsert` | token endpoint | Create or update a card by `externalUrl`. Returns `{ created, card }`. |
+| `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | token endpoint | Read, partially update (including `columnId` to move and `archived: true/false` to archive or restore) or delete a card. |
+| `PUT` | `/api/kanban/cards/upsert` | token endpoint | Create or update a card by `externalUrl` (default) or by its own `key` with `?key=key`. Returns `{ created, card }`. |
 | `GET` | `/api/kanban/cards/:id/history` | token endpoint | Time spent in each column. |
 | `GET`, `POST` | `/api/kanban/cards/:id/notes` | token endpoint | List notes or add one: `{ "body" }`. |
 | `DELETE` | `/api/kanban/cards/:id/notes/:noteId` | token endpoint | Delete a note. |

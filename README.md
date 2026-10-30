@@ -151,6 +151,11 @@ Docker is the only prerequisite. The first run downloads Trivy and its vulnerabi
 Set `IMAGE_REF` to override the tag assigned to the application image, or set `TRIVY_IMAGE` to use
 a different pinned Trivy container version.
 
+Northstar's pages send a `Content-Security-Policy` that allows only its own scripts, styles and
+images, with no inline scripts or style attributes. Failed sign-ins are limited per address and
+username (`LOGIN_FAILURES_PER_MINUTE`, default `5`) and per address (`LOGIN_IP_FAILURES_PER_MINUTE`,
+default `20`); limited requests get `429` with `Retry-After`.
+
 ## HTTP API
 
 Every endpoint, its authentication and examples are in [docs/api.md](docs/api.md).
@@ -230,6 +235,12 @@ return the matching projects. `GET /api/kanban/cards?externalUrl=<url>` and
 `GET /api/kanban/cards?projectId=<id>` return the matching cards. Cards also take an optional `key` (up to 120
 characters, unique when set) chosen by the client, so a card can be found with `GET /api/kanban/cards?key=<key>`
 even when it has no link. Sending an empty `key` clears it.
+
+Cards can be archived with `PUT /api/kanban/cards/:id` and `{"archived": true}`, and restored with
+`false`. Each card has `archived` and `archivedAt`. Archived cards are left off `GET /api/kanban` and
+`GET /api/kanban/cards` unless you add `?archived=include` (all cards) or `?archived=only`; on the board,
+**Show archived** brings them back. Cards also take an optional `source` (up to 80 characters, for
+example `ipm-sync`), and `GET /api/kanban/cards` filters by `?tag=` and `?source=`.
 `GET /api/kanban/cards?decision=open` returns cards with a decision that has no `decidedOption` yet.
 
 A card's `nextStep` is free text (up to 1000 characters): the exact next action or command.
