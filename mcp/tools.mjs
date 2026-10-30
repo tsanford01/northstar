@@ -1,10 +1,31 @@
 // Tool definitions. Input schemas mirror the API's own validation so a bad call is refused
 // before it is sent; the API remains the authority and its errors are returned as-is.
+import { auditBoard, exportBoard, isIdea, resolveColumn, resolveTeam, withStatusLine } from './board.mjs';
 
 const id = { type: 'integer', minimum: 1 };
 const score = { type: 'integer', minimum: 1, maximum: 10 };
 const text = (maxLength, minLength = 0) => ({ type: 'string', minLength, maxLength });
 const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
+const names = (maxItems) => ({ type: 'array', items: text(80, 1), minItems: 1, maxItems });
+const fail = (status, message) => Object.assign(new Error(message), { status });
+const lower = (value) => String(value ?? '').trim().toLocaleLowerCase();
+
+// Every team's board, archived cards included: [{ team, columns, cards }].
+async function boards(api) {
+  const teams = await api.request('GET', '/api/teams');
+  return { teams, boards: await Promise.all(teams.map(async (team) => ({ team, ...(await api.request('GET', '/api/kanban', { query: { teamId: team.id, archived: 'include' } })) }))) };
+}
+
+// One card by id, key or externalUrl (exactly one of them), on any team, archived or not.
+async function findCard(api, { id: cardId, key, externalUrl }) {
+  const given = [cardId, key, externalUrl].filter((value) => value !== undefined).length;
+  if (given !== 1) throw fail(400, 'Name the card by exactly one of id, key or externalUrl.');
+  if (cardId !== undefined) return api.request('GET', `/api/kanban/cards/${cardId}`);
+  const found = await api.request('GET', '/api/kanban/cards', { query: { ...(key ? { key } : { externalUrl }), archived: 'include' } });
+  if (found.length > 1) throw fail(409, `More than one card has this ${key ? 'key' : 'externalUrl'}; name it by id.`);
+  if (!found.length) throw fail(404, 'Card not found.');
+  return found[0];
+}
 
 export const tools = [
   {
@@ -89,6 +110,25 @@ export const tools = [
     },
   },
   {
+    name: 'audit_board',
+    description: 'Problems across every board, as a list: a Scheduled project (not an idea) with cards in an active column; a project with active cards and no "Status YYYY-MM-DD:" line; a card whose assignee is a known variant (assigneeVariants {"from": "to"}); cards sharing an externalUrl (archived ones included). activeColumns names the columns that count as active.',
+    inputSchema: object({ activeColumns: names(20), assigneeVariants: { type: 'object', additionalProperties: text(80) } }, ['activeColumns']),
+    async run(api, { activeColumns, assigneeVariants }) {
+      const [{ boards: all }, projects] = await Promise.all([boards(api), api.request('GET', '/api/projects')]);
+      const problems = auditBoard({ boards: all, projects, activeColumns, assigneeVariants });
+      return { problems, count: problems.length };
+    },
+  },
+  {
+    name: 'export_board',
+    description: 'Every team, column, project and card (archived included) as one JSON document, each list in id order with keys sorted, so two exports diff cleanly in git.',
+    inputSchema: object({}),
+    async run(api) {
+      const [{ teams, boards: all }, projects] = await Promise.all([boards(api), api.request('GET', '/api/projects')]);
+      return exportBoard({ teams, boards: all, projects });
+    },
+  },
+  {
     name: 'upsert_project',
     write: true,
     description: 'Create a project, or update the one whose key (projectId or externalUrl) matches. Repeating a call changes nothing.',
@@ -107,9 +147,63 @@ export const tools = [
   {
     name: 'upsert_card',
     write: true,
-    description: 'Create a kanban card, or update the one whose key matches: its externalUrl (default) or, with key="key", its own card key. Repeating a call changes nothing.',
-    inputSchema: object({ card: { type: 'object' }, key: { type: 'string', enum: ['externalUrl', 'key'] } }, ['card']),
-    run: (api, { card, key }) => api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card }),
+    description: 'Create a kanban card, or update the one whose key matches: its externalUrl (default) or, with key="key", its own card key. Repeating a call changes nothing. Place it with team (name or id) and column (name), or a raw card.columnId; a new card needs both team and column, and a column the team lacks is an error. An existing card stays on its own team.',
+    inputSchema: object({ card: { type: 'object' }, key: { type: 'string', enum: ['externalUrl', 'key'] }, team: text(50, 1), column: text(80, 1) }, ['card']),
+    async run(api, { card, key, team, column }) {
+      if (team === undefined && column === undefined) return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card });
+      if (card.columnId !== undefined) throw fail(400, 'Give the column by name or card.columnId, not both.');
+      const value = card[key === 'key' ? 'key' : 'externalUrl'];
+      const [existing] = value ? await api.request('GET', '/api/kanban/cards', { query: { [key === 'key' ? 'key' : 'externalUrl']: value, archived: 'include' } }) : [];
+      const teams = await api.request('GET', '/api/teams');
+      const target = team !== undefined ? resolveTeam(teams, team) : teams.find((item) => item.id === existing?.teamId);
+      if (!target) throw fail(400, 'Name the team for a new card.');
+      if (existing && existing.teamId !== target.id) {
+        throw fail(400, `That card is on ${teams.find((item) => item.id === existing.teamId)?.name ?? 'another team'}'s board; a card stays on its own team.`);
+      }
+      if (column === undefined) {
+        if (!existing) throw fail(400, 'Name the column for a new card.');
+        return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card });
+      }
+      const { columns } = await api.request('GET', '/api/kanban', { query: { teamId: target.id } });
+      const columnId = resolveColumn(columns, column, target.name).id;
+      return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: { ...card, columnId } });
+    },
+  },
+  {
+    name: 'move_card',
+    write: true,
+    description: 'Move a card (by id, key or externalUrl) to a column on its own board, by name. With projectStatus, its project gets a dated "Status YYYY-MM-DD: text" line in its description (replacing an older one). A Scheduled project goes Active when the column is not a backlog column (backlogColumns, default ["Backlog"]); an idea stays an idea. project (a projectId) names the project when the card links none or links another.',
+    inputSchema: object({
+      id, key: text(120, 1), externalUrl: text(2048, 1), column: text(80, 1), projectStatus: text(300, 1), project: text(16, 1),
+      backlogColumns: names(20),
+    }, ['column']),
+    async run(api, { id: cardId, key, externalUrl, column, projectStatus, project, backlogColumns = ['Backlog'] }) {
+      const card = await findCard(api, { id: cardId, key, externalUrl });
+      const team = (await api.request('GET', '/api/teams')).find((item) => item.id === card.teamId) ?? { id: card.teamId, name: `team ${card.teamId}` };
+      const { columns } = await api.request('GET', '/api/kanban', { query: { teamId: card.teamId } });
+      const target = resolveColumn(columns, column, team.name);
+      let linked = null;
+      if (project !== undefined) {
+        [linked] = await api.request('GET', '/api/projects', { query: { projectId: project } });
+        if (!linked) throw fail(404, `No project with projectId "${project}".`);
+      } else if (card.projectId) {
+        linked = (await api.request('GET', '/api/projects')).find((item) => item.id === card.projectId) ?? null;
+      }
+      if (projectStatus !== undefined && !linked) throw fail(400, 'This card links no project; name one with project to record its status.');
+      // Everything is checked before anything is written.
+      const changes = {};
+      if (linked && projectStatus !== undefined) changes.description = withStatusLine(linked.description, projectStatus);
+      const working = !backlogColumns.some((name) => lower(name) === lower(target.name));
+      if (linked && working && linked.status === 'Scheduled' && !isIdea(linked)) changes.status = 'Active';
+      const moved = target.id === card.columnId ? card : await api.request('PUT', `/api/kanban/cards/${card.id}`, { body: { columnId: target.id } });
+      if (!linked || !Object.keys(changes).length) return { card: moved, project: linked, projectChanged: [] };
+      try {
+        const updated = await api.request('PUT', `/api/projects/${linked.id}`, { body: changes });
+        return { card: moved, project: updated, projectChanged: Object.keys(changes) };
+      } catch (error) {
+        throw fail(error.status ?? 0, `The card is in ${target.name}, but its project was not updated: ${error.message}`);
+      }
+    },
   },
   {
     name: 'archive_card',
@@ -161,6 +255,11 @@ export function validate(schema, value, path = 'arguments') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return `${path} must be an object.`;
     for (const name of schema.required || []) if (value[name] === undefined) return `${path}.${name} is required.`;
     for (const [name, item] of Object.entries(value)) {
+      if (typeof schema.additionalProperties === 'object') {
+        const error = validate(schema.properties?.[name] ?? schema.additionalProperties, item, `${path}.${name}`);
+        if (error) return error;
+        continue;
+      }
       if (!schema.properties) continue;
       const property = schema.properties[name];
       if (!property) {
@@ -168,6 +267,15 @@ export function validate(schema, value, path = 'arguments') {
         continue;
       }
       const error = validate(property, item, `${path}.${name}`);
+      if (error) return error;
+    }
+    return null;
+  }
+  if (schema.type === 'array') {
+    if (!Array.isArray(value)) return `${path} must be a list.`;
+    if (value.length < (schema.minItems ?? 0) || value.length > (schema.maxItems ?? Infinity)) return `${path} must have ${schema.minItems ?? 0}–${schema.maxItems} items.`;
+    for (const [index, item] of value.entries()) {
+      const error = validate(schema.items, item, `${path}[${index}]`);
       if (error) return error;
     }
     return null;

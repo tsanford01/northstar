@@ -47,7 +47,9 @@ The token comes from your environment, so it is not written into the file:
 | `get_project` | read | One project by `id` |
 | `list_cards` | read | Kanban cards across boards by `key`, `externalUrl`, `projectId`, `teamId`, `assignee`, `tag`, `source` or `decision: "open"`. Archived cards appear only with `archived: "include"` or `"only"`. |
 | `get_card_by_key` | read | One card by its stable `key` |
-| `get_board` | read | A team's board (`teamId`; the first team's board if omitted) |
+| `get_board` | read | A team's board (`teamId`; the first team's board if omitted), or every board with `team: "all"` |
+| `audit_board` | read | Problems across every board, as a list. You name the active columns (`activeColumns`) and, optionally, assignee spellings to fix (`assigneeVariants: {"from": "to"}`). See [The board audit](#the-board-audit). |
+| `export_board` | read | Every team, column, project and card, archived ones included, as one JSON document in a stable order |
 | `get_activity` | read | The activity feed (`since`, `limit`) |
 | `list_teams` | read | Teams with capacity and assignments |
 | `status_export` | read | The project status export as CSV |
@@ -55,11 +57,52 @@ The token comes from your environment, so it is not written into the file:
 | `apply_view` | read | The projects a saved view shows (by `id` or `name`), in its order |
 | `upsert_project` | write | Create, or update by `key` (`projectId` or `externalUrl`) |
 | `move_project` | write | Set impact and urgency (1–10), with an optional comment |
-| `upsert_card` | write | Create, or update the card matched by `externalUrl` (default) or, with `key: "key"`, by its own card key |
+| `upsert_card` | write | Create, or update the card matched by `externalUrl` (default) or, with `key: "key"`, by its own card key. Place it with `team` (name or id) and `column` (name), or a raw `card.columnId`. |
+| `move_card` | write | Move a card (by `id`, `key` or `externalUrl`) to a column on its own board, by name, and optionally record its project's status (`projectStatus`) |
 | `archive_card`, `restore_card` | write | Archive a card or bring it back |
 | `add_card_note` | write | Add a note to a card |
 | `decide_card` | write | Set a card decision's chosen option |
 | `set_team` | write | Create a team or set its capacity |
+
+### Placing and moving cards
+
+A new card needs both `team` and `column`. A column the team doesn't have is an error that lists the
+team's columns; the tool never falls back to another team or the first column. An existing card
+always stays on its own team: `upsert_card` and `move_card` look the column up on that card's
+board, and naming another team is refused. `archive_card`, `restore_card`, `add_card_note` and
+`decide_card` work on a card of any team.
+
+`move_card` with `projectStatus` writes one dated line into the linked project's description:
+
+```text
+Status 2026-10-30: Stage one is built; stage two starts Monday.
+```
+
+The line replaces any older status line. When there is none, it goes first, so the description's
+1,000-character limit never cuts it off. If the column isn't a backlog column (`backlogColumns`,
+default `["Backlog"]`), a Scheduled project becomes Active; an idea stays an idea. When the card
+links no project, or a project on another team, name it with `project` (its projectId). Everything
+is checked before anything is written.
+
+### The board audit
+
+`audit_board` reads every board and returns `{ problems, count }`. Each problem names its kind and
+the cards and project involved:
+
+| `problem` | Means |
+|---|---|
+| `scheduled_with_active_cards` | A Scheduled project (not an idea) has cards in an active column |
+| `no_status_line` | A project with cards in an active column has no `Status YYYY-MM-DD:` line |
+| `assignee_variant` | A card's assignee is one of the `assigneeVariants` keys |
+| `duplicate_external_url` | More than one card has the same externalUrl (archived cards included) |
+
+Nothing is hard-coded: the columns that count as active are the ones you pass in `activeColumns`.
+
+### Exporting the board
+
+`export_board` returns `{ teams, columns, projects, cards }`. Each list is in id order, every
+object's keys are sorted, and per-request fields such as open-decision counts are left out. Two
+exports of an unchanged board are identical, so a file kept in git shows only real changes.
 
 Inputs are checked against the same limits the API enforces before anything is sent. An API error
 comes back as the tool result (`Northstar returned HTTP <status>: <message>`), never as a stack trace.

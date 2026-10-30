@@ -51,7 +51,7 @@ test('every tool works against a running Northstar with a write token', async (t
   const { client, call } = await connect(t, { baseUrl, token: writeToken });
 
   const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
-  assert.deepEqual(names, ['add_card_note', 'apply_view', 'archive_card', 'decide_card', 'get_activity', 'get_board', 'get_card_by_key', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'list_views', 'move_project', 'restore_card', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
+  assert.deepEqual(names, ['add_card_note', 'apply_view', 'archive_card', 'audit_board', 'decide_card', 'export_board', 'get_activity', 'get_board', 'get_card_by_key', 'get_project', 'list_cards', 'list_projects', 'list_teams', 'list_views', 'move_card', 'move_project', 'restore_card', 'set_team', 'status_export', 'upsert_card', 'upsert_project']);
 
   const team = await call('set_team', { name: 'Platform Ops', capacity: 4 });
   assert.equal(team.isError, false, team.text);
@@ -191,4 +191,62 @@ test('NORTHSTAR_URL must be http or https without credentials', () => {
   assert.throws(() => parseBaseUrl('ftp://northstar.example'), /http or https/);
   assert.throws(() => parseBaseUrl('https://user:pass@northstar.example'), /credentials/);
   assert.throws(() => parseBaseUrl('not a url'), /valid URL/);
+});
+
+
+test('cards are placed, moved, audited and exported across teams by name', async (t) => {
+  const { baseUrl, send, owner, token } = await startNorthstar(t);
+  const { call } = await connect(t, { baseUrl, token: await token('Board agent', 'write') });
+  const first = await send('/api/kanban/columns', 'POST', { name: 'Backlog' }, owner);
+  const other = (await call('set_team', { name: 'Data Ops', capacity: 3 })).value;
+  for (const name of ['Backlog', 'In progress']) await send(`/api/kanban/columns?teamId=${other.id}`, 'POST', { name }, owner);
+  const project = (await call('upsert_project', { key: 'projectId', project: { projectId: 'DO-1', name: 'Pipeline', team: 'Data Ops', status: 'Scheduled', impact: 5, urgency: 5, confidence: 5, effort: 5, description: 'Goal: one pipeline.' } })).value.project;
+
+  // a new card needs the team and the column, and a column the team lacks is an error
+  const card = { externalUrl: 'https://tracker.example/DO-1', title: 'Build the pipeline', assignee: 'ops-bot', projectId: project.id };
+  assert.match((await call('upsert_card', { card, column: 'Backlog' })).text, /Name the team for a new card/);
+  assert.match((await call('upsert_card', { card, team: 'Data Ops', column: 'Review' })).text, /Data Ops has no column "Review"\. Its columns: Backlog, In progress\./);
+  assert.match((await call('upsert_card', { card, team: 'Nobody', column: 'Backlog' })).text, /No team "Nobody"/);
+  const created = await call('upsert_card', { card, team: 'data ops', column: 'backlog' });
+  assert.equal(created.value.created, true, created.text);
+  assert.equal(created.value.card.teamId, other.id);
+  const cardId = created.value.card.id;
+  // an existing card keeps its team: updates by name on its own board, refused on another
+  assert.equal((await call('upsert_card', { card: { ...card, title: 'Pipeline v1' } })).value.card.title, 'Pipeline v1');
+  assert.match((await call('upsert_card', { card, team: String(first.teamId), column: 'Backlog' })).text, /a card stays on its own team/);
+
+  // move_card: by key/url/id, with a dated status line; Scheduled goes Active outside the backlog
+  const moved = await call('move_card', { externalUrl: card.externalUrl, column: 'In progress', projectStatus: 'Building the first stage' });
+  assert.equal(moved.isError, false, moved.text);
+  assert.equal(moved.value.card.columnId === created.value.card.columnId, false);
+  assert.deepEqual(moved.value.projectChanged, ['description', 'status']);
+  assert.equal(moved.value.project.status, 'Active');
+  assert.match(moved.value.project.description, /^Status \d{4}-\d{2}-\d{2}: Building the first stage\n\nGoal: one pipeline\.$/);
+  const again = await call('move_card', { id: cardId, column: 'In progress', projectStatus: 'Stage one done' });
+  assert.equal((again.value.project.description.match(/^Status /gm) || []).length, 1);
+  assert.match((await call('move_card', { id: cardId, column: 'Done' })).text, /Data Ops has no column "Done"/);
+  assert.match((await call('move_card', { id: cardId, key: 'x', column: 'Backlog' })).text, /exactly one of id, key or externalUrl/);
+
+  // archive, notes and decisions work on a card of any team
+  assert.equal((await call('add_card_note', { cardId, body: 'From the agent' })).value.body, 'From the agent');
+  await call('upsert_card', { card: { ...card, decision: { options: ['Ship', 'Wait'] } } });
+  assert.equal((await call('decide_card', { id: cardId, option: 'Ship' })).value.decision.decidedOption, 'Ship');
+
+  // audit: the caller names the active columns and the assignee variants
+  await call('upsert_project', { key: 'projectId', project: { projectId: 'DO-2', name: 'Second', team: 'Data Ops', status: 'Scheduled', impact: 4, urgency: 4, confidence: 5, effort: 5 } });
+  const second = (await call('list_projects', { projectId: 'DO-2' })).value[0];
+  await call('upsert_card', { key: 'key', card: { key: 'do:2', title: 'Second card', projectId: second.id, externalUrl: 'https://tracker.example/DO-2' }, team: 'Data Ops', column: 'In progress' });
+  const audit = await call('audit_board', { activeColumns: ['In progress'], assigneeVariants: { 'ops-bot': 'Ops Bot' } });
+  assert.equal(audit.isError, false, audit.text);
+  assert.deepEqual(audit.value.problems.map((item) => item.problem).sort(), ['assignee_variant', 'no_status_line', 'scheduled_with_active_cards']);
+  assert.equal((await call('audit_board', { activeColumns: [] })).isError, true);
+
+  // archive keeps the card in the export; two exports are byte for byte the same
+  assert.equal((await call('archive_card', { id: cardId })).value.archived, true);
+  const one = await call('export_board');
+  assert.equal(one.isError, false, one.text);
+  assert.ok(one.value.cards.some((item) => item.id === cardId && item.archived));
+  assert.deepEqual(one.value.teams.map((item) => item.id), [...one.value.teams.map((item) => item.id)].sort((a, b) => a - b));
+  assert.ok(one.value.projects.some((item) => item.projectId === 'DO-1'));
+  assert.equal(one.text, (await call('export_board')).text);
 });
