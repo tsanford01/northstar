@@ -35,7 +35,7 @@
 [data-theme="dark"] .team-filter-menu { color:var(--ink); background:#1b2522; box-shadow:0 14px 36px rgb(0 0 0 / 34%); }
 [data-theme="dark"] .team-filter-menu label { color:#c5d0cc; }
 [data-theme="dark"] .team-filter-menu label:hover,[data-theme="dark"] .project-row:hover { background:#202c28; }
-[data-theme="dark"] .app-menu-panel { box-shadow:0 16px 44px rgb(0 0 0 / 38%); }
+[data-theme="dark"] .app-menu-panel,[data-theme="dark"] .filter-popover { box-shadow:0 16px 44px rgb(0 0 0 / 38%); }
 [data-theme="dark"] .app-menu-item:hover,[data-theme="dark"] .app-menu-item:focus-visible { background:#25312d; }
 [data-theme="dark"] .app-menu-item.primary { color:#102019; background:#91c7b5; }
 [data-theme="dark"] .app-menu-item.primary:hover,[data-theme="dark"] .app-menu-item.primary:focus-visible { background:#a2d3c2; }
