@@ -11,8 +11,11 @@ import {
   projectStatusLabel,
   selectPortfolioProjects,
 } from './portfolio-model.js';
+import {
+  ariaSort, DEFAULT_COLUMNS, DEFAULT_SORT, MOBILE_COLUMNS, sortProjects, toggleSort, visibleColumns,
+} from './shared/project-table.js';
 
-const state = { user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
+const state = { sort: DEFAULT_SORT, columns: null, user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
 const matrix = $('#matrix');
 const dialog = $('#project-dialog');
 const planningSetupDialog = $('#planning-setup-dialog');
@@ -140,6 +143,8 @@ async function load() {
     if (teamParam && state.teams.some((team) => team.name === teamParam)) state.selectedTeams = [teamParam];
     document.querySelectorAll('[data-project-editor]').forEach((element) => { element.hidden = state.user.role !== 'admin' && !(state.user.role === 'team_manager' && state.user.teamIds.length); });
     $('#empty-add').hidden = state.user.role !== 'admin' && !(state.user.role === 'team_manager' && state.user.teamIds.length);
+    loadTablePrefs();
+    renderColumnMenu();
     render();
   } catch (error) {
     toast(error.message);
@@ -201,17 +206,65 @@ function renderRanking(activeProjects) {
   $('#ranking-empty').classList.toggle('hidden', ranked.length > 0);
 }
 
+const TABLE_PREFS_KEY = 'northstar.projectTable';
+
+function loadTablePrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TABLE_PREFS_KEY) || '{}');
+    if (Array.isArray(saved.sort) && saved.sort.length) state.sort = saved.sort;
+    if (Array.isArray(saved.columns) && saved.columns.length) state.columns = saved.columns;
+  } catch { /* storage blocked or corrupt: defaults */ }
+  if (!state.columns) state.columns = matchMedia('(max-width: 620px)').matches ? MOBILE_COLUMNS : DEFAULT_COLUMNS;
+}
+
+function saveTablePrefs() {
+  try { localStorage.setItem(TABLE_PREFS_KEY, JSON.stringify({ sort: state.sort, columns: state.columns })); } catch { /* not persisted */ }
+}
+
+function formatUpdated(value) {
+  if (!value) return { iso: '', text: '' };
+  const text = String(value);
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(text) ? text : `${text.replace(' ', 'T')}Z`);
+  if (Number.isNaN(date.getTime())) return { iso: '', text };
+  return { iso: date.toISOString(), text: date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) };
+}
+
+function projectCell(project, column) {
+  switch (column.id) {
+    case 'id': return project.projectId ? `<small class="project-id">${escapeHtml(project.projectId)}</small>` : '';
+    case 'name': return `<span class="project-name">${escapeHtml(project.name)}</span>${project.externalUrl ? `<a class="source-link" data-external-link href="${escapeHtml(project.externalUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open external source for ${escapeHtml(project.name)}" title="Open external source">↗ Source</a>` : ''}${project.archived ? '<small class="archive-tag">Archived</small>' : ''}${project.status === 'Complete' && project.retrospective ? '<small class="retro-tag">Retrospective</small>' : ''}${project.description ? `<span class="description">${escapeHtml(project.description)}</span>` : ''}`;
+    case 'team': return escapeHtml(project.team);
+    case 'status': return `<span class="badge ${projectStatusClass(project)}">${escapeHtml(projectStatusLabel(project))}</span>`;
+    case 'score': return `<span class="score" title="Priority score">${project.score}</span>`;
+    case 'updated': { const { iso, text } = formatUpdated(project.updatedAt); return iso ? `<time datetime="${iso}">${escapeHtml(text)}</time>` : escapeHtml(text); }
+    default: return escapeHtml(String(column.value(project) ?? ''));
+  }
+}
+
+function renderColumnMenu() {
+  const shown = new Set(state.columns);
+  $('#column-menu-panel').innerHTML = `<legend>Show columns</legend>${visibleColumns().map((column) => `
+    <label><input type="checkbox" value="${column.id}" ${shown.has(column.id) ? 'checked' : ''}> ${escapeHtml(column.label)}</label>`).join('')}
+    <button class="text-button" type="button" data-reset-columns>Reset columns</button>`;
+}
+
 function renderProjectList(projects) {
   $('#project-list-title').textContent = !state.selectedTeams.length ? 'All projects' : `${state.selectedTeams.join(', ')} projects`;
   $('#list-count').textContent = `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`;
-  $('#project-rows').innerHTML = projects.length ? projects.map((project) => `
-    <article class="project-row ${project.archived ? 'archived' : ''}" data-id="${project.id}" tabindex="0" aria-label="Edit ${escapeHtml(project.name)}">
-      <div><h3>${project.projectId ? `<small class="project-id">${escapeHtml(project.projectId)}</small>` : ''}${escapeHtml(project.name)}${project.externalUrl ? `<a class="source-link" data-external-link href="${escapeHtml(project.externalUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open external source for ${escapeHtml(project.name)}" title="Open external source">↗ Source</a>` : ''}${project.archived ? '<small class="archive-tag">Archived</small>' : ''}${project.status === 'Complete' && project.retrospective ? '<small class="retro-tag">Retrospective</small>' : ''}</h3><p class="description">${escapeHtml(project.description || 'No context added')}</p></div>
-      <span class="meta team">${escapeHtml(project.team)}</span>
-      <span class="badge ${projectStatusClass(project)}">${escapeHtml(projectStatusLabel(project))}</span>
-      <span class="meta">I ${project.impact} · U ${project.urgency} · C ${project.confidence} · E ${project.effort} · ${project.capacity} ${project.capacity === 1 ? 'person' : 'people'}</span>
-      <span class="score" title="Priority score">${project.score}</span>
-    </article>`).join('') : '<p class="no-results">No projects match this view.</p>';
+  const columns = visibleColumns(state.columns);
+  $('#project-table-head').innerHTML = columns.map((column) => {
+    const order = state.sort.findIndex((sort) => sort.column === column.id);
+    const sort = ariaSort(state.sort, column.id);
+    const mark = sort === 'none' ? '' : `<span class="sort-mark" aria-hidden="true">${sort === 'ascending' ? '▲' : '▼'}${state.sort.length > 1 ? `<sub>${order + 1}</sub>` : ''}</span>`;
+    return `<th scope="col" class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}" aria-sort="${sort}"><button type="button" data-sort-column="${column.id}">${escapeHtml(column.label)}${mark}</button></th>`;
+  }).join('');
+  const sorted = sortProjects(projects, state.sort);
+  $('#project-table-body').innerHTML = sorted.map((project) => `
+    <tr class="project-row ${project.archived ? 'archived' : ''}" data-id="${project.id}" tabindex="0">
+      ${columns.map((column) => `<td class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}">${projectCell(project, column)}</td>`).join('')}
+    </tr>`).join('');
+  $('#project-table').hidden = !sorted.length;
+  $('#project-table-empty').hidden = sorted.length > 0;
 }
 
 function render() {
@@ -736,6 +789,28 @@ document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click',
   document.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item === tab));
   render();
 }));
+$('#project-table-head').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-sort-column]');
+  if (!button) return;
+  state.sort = toggleSort(state.sort, button.dataset.sortColumn, { add: event.shiftKey });
+  saveTablePrefs();
+  render();
+  $(`[data-sort-column="${button.dataset.sortColumn}"]`)?.focus();
+});
+$('#column-menu-panel').addEventListener('change', (event) => {
+  const picked = [...$('#column-menu-panel').querySelectorAll('input:checked')].map((input) => input.value);
+  if (!picked.length) { event.target.checked = true; return; }
+  state.columns = picked;
+  saveTablePrefs();
+  render();
+});
+$('#column-menu-panel').addEventListener('click', (event) => {
+  if (!event.target.closest('[data-reset-columns]')) return;
+  state.columns = matchMedia('(max-width: 620px)').matches ? MOBILE_COLUMNS : DEFAULT_COLUMNS;
+  saveTablePrefs();
+  renderColumnMenu();
+  render();
+});
 $('#search').addEventListener('input', (event) => { state.query = event.target.value.trim(); render(); });
 $('#team-filter-menu').addEventListener('change', (event) => {
   if (event.target.value === 'All') state.selectedTeams = [];

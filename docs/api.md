@@ -130,6 +130,9 @@ Optional project fields: `projectId`, `externalUrl`, `description`, `retrospecti
 `archiveNote`, `restoreNote`, `team`, `status` (`Scheduled`, `Active`, `On hold`, `Blocked`,
 `Complete`), `scheduleStage`, `capacity`, `archived`, `hiddenFromReadOnly`.
 
+Read-only fields on every listed project: `score`, `cardCount` (linked cards), `openDecisionCount`
+(linked, unarchived cards with a decision that has no decided option), `createdAt`, `updatedAt`.
+
 ```sh
 curl -X POST http://localhost:3000/api/projects \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
