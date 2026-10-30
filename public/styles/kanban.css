@@ -21,6 +21,10 @@
 .kanban-column-actions { display:flex; gap:2px; }
 .kanban-column-actions button { width:28px; height:28px; border:0; border-radius:6px; color:var(--muted); background:transparent; font-size:18px; }
 .kanban-column-actions button:hover { color:var(--ink); background:var(--paper); }
+.kanban-column-actions button:disabled { opacity:.35; cursor:default; }
+.kanban-column-actions button:disabled:hover { color:var(--muted); background:transparent; }
+.kanban-column-head[draggable="true"] { cursor:grab; }
+.kanban-column-head[draggable="true"]:active { cursor:grabbing; }
 .kanban-card-list { flex:1 1 auto; min-height:75px; padding:12px 0; display:grid; grid-template-columns:minmax(0,1fr); align-content:start; gap:9px; overflow-x:hidden; overflow-y:auto; }
 .kanban-card { min-width:0; padding:13px; overflow-wrap:anywhere; border:1px solid var(--line); border-radius:10px; background:var(--white); box-shadow:0 2px 8px rgb(24 34 32 / 4%); }
 .kanban-card[draggable] { cursor:grab; }
