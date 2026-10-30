@@ -88,10 +88,11 @@ test('change events reach open pages after token writes, hide hidden projects fr
   const column = await send('/api/kanban/columns', 'POST', { name: 'To do' }, writer).then((response) => response.json());
   for (const stream of [adminStream, viewerStream, readerStream]) assert.deepEqual((await stream.next()).kinds, ['kanban']);
   await send('/api/kanban/cards', 'POST', { columnId: column.id, title: 'Visible card' }, writer);
+  // A new card also changes its team's card count.
   const viewerEvent = await viewerStream.next();
-  assert.deepEqual(viewerEvent.kinds, ['kanban']);
+  assert.deepEqual(viewerEvent.kinds, ['kanban', 'teams']);
   assert.equal(viewerEvent.version, viewerVersion + 2);
-  assert.deepEqual((await adminStream.next()).kinds, ['kanban']);
+  assert.deepEqual((await adminStream.next()).kinds, ['kanban', 'teams']);
 
   // A failed or no-op write is silent.
   assert.equal((await send('/api/kanban/cards', 'POST', { columnId: column.id, title: '' }, writer)).status, 400);

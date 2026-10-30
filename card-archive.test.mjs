@@ -59,5 +59,6 @@ test('cards can be archived and restored, are hidden by default, and filter by t
   const unarchived = await send(`/api/kanban/cards/${synced.id}`, 'PUT', { archived: false }).then((response) => response.json());
   assert.deepEqual([unarchived.archived, unarchived.archivedAt], [false, null]);
   assert.deepEqual(ids((await read('/api/kanban')).cards), [synced.id, manual.id]);
-  assert.deepEqual(await archiveEvents(), ['card.restored']);
+  // Change history survives the backup restore, so the earlier archive is still listed.
+  assert.deepEqual(await archiveEvents(), ['card.restored', 'card.archived']);
 });
