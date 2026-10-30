@@ -23,6 +23,8 @@ function lookupParams(url, names) {
 
 export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresPerMinute = process.env.TOKEN_AUTH_FAILURES_PER_MINUTE } = {}) {
   const tokenFailures = createFailureLimiter({ limit: positiveInteger(tokenFailuresPerMinute, 10) });
+  const loginFailures = createFailureLimiter({ limit: positiveInteger(process.env.LOGIN_FAILURES_PER_MINUTE, 5) });
+  const loginAddressFailures = createFailureLimiter({ limit: positiveInteger(process.env.LOGIN_IP_FAILURES_PER_MINUTE, 20) });
   const ssoSettings = createSsoSettings(db);
   let ssoConfig = ssoSettings.load();
   const auth = createAuthService(db, { signupAllowed: () => ssoConfig.signupAllowed === true, secureCookies: () => ssoConfig.publicUrl?.startsWith('https:') });
@@ -68,7 +70,24 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       if (url.pathname === '/api/auth/status' && req.method === 'GET') return json(res, 200, { setupRequired: auth.setupRequired(), authenticated: Boolean(auth.userForRequest(req)), ssoProviders: sso.providers(), signupAllowed: auth.signupAllowed() }), true;
       if (url.pathname === '/api/auth/setup' && req.method === 'POST') return json(res, 201, auth.setup(await readJson(req), req, res)), true;
       if (url.pathname === '/api/auth/signup' && req.method === 'POST') return json(res, 201, auth.signup(await readJson(req), req, res)), true;
-      if (url.pathname === '/api/auth/login' && req.method === 'POST') return json(res, 200, auth.login(await readJson(req), req, res)), true;
+      if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+        // Failed passwords are limited per address and username, and per address across usernames.
+        const input = await readJson(req);
+        const userKey = `${clientIp}\n${String(input.username || '').trim().toLowerCase()}`;
+        const retryAfter = Math.max(loginFailures.retryAfter(userKey), loginAddressFailures.retryAfter(clientIp));
+        if (retryAfter) {
+          res.setHeader('retry-after', String(retryAfter));
+          return json(res, 429, { error: 'Too many failed sign-in attempts. Try again later.' }), true;
+        }
+        try {
+          const user = auth.login(input, req, res);
+          loginFailures.reset(userKey);
+          return json(res, 200, user), true;
+        } catch (error) {
+          if (error instanceof AuthError && error.status === 401) { loginFailures.fail(userKey); loginAddressFailures.fail(clientIp); }
+          throw error;
+        }
+      }
       if (url.pathname === '/api/auth/logout' && req.method === 'POST') { auth.logout(req, res); return json(res, 200, { ok: true }), true; }
       if (url.pathname === '/api/auth/me' && req.method === 'GET') return json(res, 200, requireUser(req)), true;
 

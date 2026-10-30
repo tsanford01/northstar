@@ -151,6 +151,11 @@ Docker is the only prerequisite. The first run downloads Trivy and its vulnerabi
 Set `IMAGE_REF` to override the tag assigned to the application image, or set `TRIVY_IMAGE` to use
 a different pinned Trivy container version.
 
+Northstar's pages send a `Content-Security-Policy` that allows only its own scripts, styles and
+images, with no inline scripts or style attributes. Failed sign-ins are limited per address and
+username (`LOGIN_FAILURES_PER_MINUTE`, default `5`) and per address (`LOGIN_IP_FAILURES_PER_MINUTE`,
+default `20`); limited requests get `429` with `Retry-After`.
+
 ## HTTP API
 
 Every endpoint, its authentication and examples are in [docs/api.md](docs/api.md).
