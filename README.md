@@ -235,6 +235,12 @@ return the matching projects. `GET /api/kanban/cards?externalUrl=<url>` and
 `GET /api/kanban/cards?projectId=<id>` return the matching cards. Cards also take an optional `key` (up to 120
 characters, unique when set) chosen by the client, so a card can be found with `GET /api/kanban/cards?key=<key>`
 even when it has no link. Sending an empty `key` clears it.
+
+Cards can be archived with `PUT /api/kanban/cards/:id` and `{"archived": true}`, and restored with
+`false`. Each card has `archived` and `archivedAt`. Archived cards are left off `GET /api/kanban` and
+`GET /api/kanban/cards` unless you add `?archived=include` (all cards) or `?archived=only`; on the board,
+**Show archived** brings them back. Cards also take an optional `source` (up to 80 characters, for
+example `ipm-sync`), and `GET /api/kanban/cards` filters by `?tag=` and `?source=`.
 `GET /api/kanban/cards?decision=open` returns cards with a decision that has no `decidedOption` yet.
 
 A card's `nextStep` is free text (up to 1000 characters): the exact next action or command.
