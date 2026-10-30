@@ -36,3 +36,22 @@
 .column-menu-panel legend { padding:0; margin-bottom:4px; color:var(--muted); font-size:10px; font-weight:750; }
 .column-menu-panel label { display:flex; gap:7px; align-items:center; font-size:11px; color:var(--ink); }
 .column-menu-panel .text-button { margin-top:4px; padding:4px 0; }
+.filter-row td { padding:6px 8px; border-bottom:1px solid var(--line); background:var(--white); vertical-align:top; }
+.filter-row input { width:100%; min-width:60px; padding:5px 6px; border:1px solid var(--line); border-radius:6px; color:var(--ink); background:var(--paper); font:inherit; font-size:10px; }
+.filter-range { display:flex; gap:4px; }.filter-range input { min-width:48px; }
+.filter-pick { position:relative; }
+.filter-pick>summary { padding:5px 6px; border:1px solid var(--line); border-radius:6px; color:var(--muted); background:var(--paper); font-size:10px; cursor:pointer; list-style:none; white-space:nowrap; }
+.filter-pick>summary::-webkit-details-marker { display:none; }
+.filter-pick fieldset { position:absolute; z-index:30; top:calc(100% + 4px); left:0; min-width:160px; margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--white); box-shadow:var(--shadow); display:grid; gap:5px; }
+.filter-pick label { display:flex; gap:6px; align-items:center; font-size:11px; color:var(--ink); white-space:nowrap; }
+.drill { padding:0; border:0; color:inherit; background:transparent; font:inherit; text-align:inherit; cursor:pointer; }
+.drill:hover .project-name,.drill:hover>small,.drill:focus-visible { text-decoration:underline; }
+.drill:focus-visible { outline:2px solid #789589; outline-offset:2px; border-radius:3px; }
+.project-table .col-actions { width:1%; white-space:nowrap; text-align:right; }
+.project-table .col-actions .button { padding:5px 10px; font-size:10px; }
+.project-row[aria-expanded="true"] { background:var(--green-2); }
+.project-detail td { padding:10px 16px 14px; background:var(--paper); }
+.linked-cards { margin:0; padding:0; list-style:none; display:grid; gap:7px; }
+.linked-cards li { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:11px; }
+.linked-cards a { color:var(--green); font-weight:700; }
+.card-meta,.detail-note { color:var(--muted); font-size:10px; }.detail-note { margin:0; }

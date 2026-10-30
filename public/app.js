@@ -12,10 +12,11 @@ import {
   selectPortfolioProjects,
 } from './portfolio-model.js';
 import {
-  ariaSort, DEFAULT_COLUMNS, DEFAULT_SORT, MOBILE_COLUMNS, sortProjects, toggleSort, visibleColumns,
+  applyFilters, ariaSort, column as tableColumn, DEFAULT_COLUMNS, DEFAULT_SORT, drillFilter, filterKind, hasTableParams, MOBILE_COLUMNS,
+  normalizeFilters, paramsToState, sortProjects, stateToParams, toggleSort, visibleColumns,
 } from './shared/project-table.js';
 
-const state = { sort: DEFAULT_SORT, columns: null, user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
+const state = { sort: DEFAULT_SORT, columns: null, filters: {}, expanded: new Set(), cards: new Map(), user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
 const matrix = $('#matrix');
 const dialog = $('#project-dialog');
 const planningSetupDialog = $('#planning-setup-dialog');
@@ -207,18 +208,44 @@ function renderRanking(activeProjects) {
 }
 
 const TABLE_PREFS_KEY = 'northstar.projectTable';
+const TABLE_PARAMS = ['q', 'sort', 'cols'];
 
+// The URL wins (a shared link or a saved view), then this browser's last table, then defaults.
 function loadTablePrefs() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(TABLE_PREFS_KEY) || '{}');
-    if (Array.isArray(saved.sort) && saved.sort.length) state.sort = saved.sort;
-    if (Array.isArray(saved.columns) && saved.columns.length) state.columns = saved.columns;
-  } catch { /* storage blocked or corrupt: defaults */ }
+  const params = new URLSearchParams(location.search);
+  if (hasTableParams(params) || params.has('cols')) {
+    const fromUrl = paramsToState(params);
+    state.query = fromUrl.query;
+    $('#search').value = fromUrl.query;
+    if (fromUrl.sort.length) state.sort = fromUrl.sort;
+    if (fromUrl.columns.length) state.columns = fromUrl.columns;
+    state.filters = fromUrl.filters;
+  } else {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TABLE_PREFS_KEY) || '{}');
+      if (Array.isArray(saved.sort) && saved.sort.length) state.sort = saved.sort;
+      if (Array.isArray(saved.columns) && saved.columns.length) state.columns = saved.columns;
+    } catch { /* storage blocked or corrupt: defaults */ }
+  }
   if (!state.columns) state.columns = matchMedia('(max-width: 620px)').matches ? MOBILE_COLUMNS : DEFAULT_COLUMNS;
+}
+
+function tableState() {
+  return { query: state.query, sort: state.sort, columns: state.columns, filters: state.filters };
+}
+
+// Mirrors the table in the address bar so the view can be shared; other parameters (team) stay.
+function syncTableUrl() {
+  const params = new URLSearchParams(location.search);
+  [...params.keys()].filter((key) => TABLE_PARAMS.includes(key) || key.startsWith('f.')).forEach((key) => params.delete(key));
+  stateToParams(tableState()).forEach((value, key) => params.append(key, value));
+  const search = params.toString();
+  history.replaceState(null, '', `${location.pathname}${search ? `?${search}` : ''}${location.hash}`);
 }
 
 function saveTablePrefs() {
   try { localStorage.setItem(TABLE_PREFS_KEY, JSON.stringify({ sort: state.sort, columns: state.columns })); } catch { /* not persisted */ }
+  syncTableUrl();
 }
 
 function formatUpdated(value) {
@@ -229,15 +256,20 @@ function formatUpdated(value) {
   return { iso: date.toISOString(), text: date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) };
 }
 
+// A cell value is a button: selecting it filters the table on that value.
+function drill(column, html, label) {
+  return `<button type="button" class="drill" data-drill="${column.id}" title="Show only ${escapeHtml(label)}">${html}</button>`;
+}
+
 function projectCell(project, column) {
+  const value = column.value(project);
   switch (column.id) {
-    case 'id': return project.projectId ? `<small class="project-id">${escapeHtml(project.projectId)}</small>` : '';
-    case 'name': return `<span class="project-name">${escapeHtml(project.name)}</span>${project.externalUrl ? `<a class="source-link" data-external-link href="${escapeHtml(project.externalUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open external source for ${escapeHtml(project.name)}" title="Open external source">↗ Source</a>` : ''}${project.archived ? '<small class="archive-tag">Archived</small>' : ''}${project.status === 'Complete' && project.retrospective ? '<small class="retro-tag">Retrospective</small>' : ''}${project.description ? `<span class="description">${escapeHtml(project.description)}</span>` : ''}`;
-    case 'team': return escapeHtml(project.team);
-    case 'status': return `<span class="badge ${projectStatusClass(project)}">${escapeHtml(projectStatusLabel(project))}</span>`;
-    case 'score': return `<span class="score" title="Priority score">${project.score}</span>`;
-    case 'updated': { const { iso, text } = formatUpdated(project.updatedAt); return iso ? `<time datetime="${iso}">${escapeHtml(text)}</time>` : escapeHtml(text); }
-    default: return escapeHtml(String(column.value(project) ?? ''));
+    case 'id': return project.projectId ? drill(column, `<small class="project-id">${escapeHtml(project.projectId)}</small>`, project.projectId) : '';
+    case 'name': return `${drill(column, `<span class="project-name">${escapeHtml(project.name)}</span>`, project.name)}${project.externalUrl ? `<a class="source-link" data-external-link href="${escapeHtml(project.externalUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open external source for ${escapeHtml(project.name)}" title="Open external source">↗ Source</a>` : ''}${project.archived ? '<small class="archive-tag">Archived</small>' : ''}${project.status === 'Complete' && project.retrospective ? '<small class="retro-tag">Retrospective</small>' : ''}${project.description ? `<span class="description">${escapeHtml(project.description)}</span>` : ''}`;
+    case 'status': return drill(column, `<span class="badge ${projectStatusClass(project)}">${escapeHtml(projectStatusLabel(project))}</span>`, project.status);
+    case 'score': return drill(column, `<span class="score" title="Priority score">${project.score}</span>`, `score ${project.score}`);
+    case 'updated': { const { iso, text } = formatUpdated(project.updatedAt); return iso ? drill(column, `<time datetime="${iso}">${escapeHtml(text)}</time>`, text) : escapeHtml(text); }
+    default: return value === '' || value === null || value === undefined ? '' : drill(column, escapeHtml(String(value)), `${column.label} ${value}`);
   }
 }
 
@@ -248,23 +280,90 @@ function renderColumnMenu() {
     <button class="text-button" type="button" data-reset-columns>Reset columns</button>`;
 }
 
+function filterChoices(column) {
+  if (column.id === 'status') return ['Scheduled', 'Active', 'On hold', 'Blocked', 'Complete'];
+  return [...new Set([...state.teams.map((team) => team.name), ...state.projects.map((project) => project.team)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+function filterControl(column) {
+  const filter = state.filters[column.id] || {};
+  const kind = filterKind(column.type);
+  if (kind === 'contains') return `<input type="search" data-filter="${column.id}" value="${escapeHtml(filter.contains || '')}" placeholder="Contains" aria-label="Filter ${escapeHtml(column.label)}: contains">`;
+  if (kind === 'in') {
+    const chosen = new Set(filter.in || []);
+    return `<details class="filter-pick"><summary aria-label="Filter ${escapeHtml(column.label)}">${chosen.size ? `${chosen.size} chosen` : 'Any'}</summary><fieldset><legend class="sr-only">${escapeHtml(column.label)}</legend>${filterChoices(column).map((value) => `
+      <label><input type="checkbox" data-filter="${column.id}" value="${escapeHtml(value)}" ${chosen.has(value) ? 'checked' : ''}> ${escapeHtml(value)}</label>`).join('')}</fieldset></details>`;
+  }
+  const type = column.type === 'date' ? 'date' : 'number';
+  return `<span class="filter-range"><input type="${type}" data-filter="${column.id}" data-bound="min" value="${escapeHtml(filter.min ?? '')}" placeholder="Min" aria-label="Filter ${escapeHtml(column.label)}: at least"><input type="${type}" data-filter="${column.id}" data-bound="max" value="${escapeHtml(filter.max ?? '')}" placeholder="Max" aria-label="Filter ${escapeHtml(column.label)}: at most"></span>`;
+}
+
+// The filter row is rebuilt only when its shape changes, so typing in it never loses focus.
+let filterRowSignature = '';
+function renderFilterRow(columns, { force = false } = {}) {
+  const signature = JSON.stringify([columns.map((column) => column.id), filterChoices(tableColumn('team'))]);
+  if (signature === filterRowSignature && !force) return;
+  filterRowSignature = signature;
+  $('#project-table-filters').innerHTML = `${columns.map((column) => `<td class="col-${column.id}">${filterControl(column)}</td>`).join('')}<td></td>`;
+}
+
+function renderCards(project) {
+  const cards = state.cards.get(project.id);
+  if (!cards) return '<p class="detail-note">Loading linked cards…</p>';
+  if (cards.error) return `<p class="detail-note">${escapeHtml(cards.error)}</p>`;
+  if (!cards.length) return '<p class="detail-note">No linked cards.</p>';
+  return `<ul class="linked-cards">${cards.map((card) => {
+    const open = card.decision && !card.decision.decidedOption;
+    return `<li><a href="/kanban.html?teamId=${encodeURIComponent(card.teamId)}">${escapeHtml(card.title)}</a>
+      <span class="card-meta">${escapeHtml(card.columnName || '')}${card.assignee ? ` · ${escapeHtml(card.assignee)}` : ''}</span>
+      ${open ? `<span class="badge blocked">Decision open: ${escapeHtml(card.decision.options.join(' / '))}${card.decision.recommendation ? ` (recommend ${escapeHtml(card.decision.recommendation)})` : ''}</span>` : ''}</li>`;
+  }).join('')}</ul>`;
+}
+
+async function loadCards(project) {
+  try {
+    const cards = await requestJson(`/api/kanban/cards?projectId=${project.id}`);
+    state.cards.set(project.id, cards);
+  } catch (error) {
+    state.cards.set(project.id, { error: error.message });
+  }
+  if (state.expanded.has(project.id)) render();
+}
+
+function toggleExpanded(project) {
+  if (state.expanded.has(project.id)) state.expanded.delete(project.id);
+  else {
+    state.expanded.add(project.id);
+    if (!state.cards.has(project.id)) loadCards(project);
+  }
+  render();
+  document.querySelector(`.project-row[data-id="${project.id}"]`)?.focus();
+}
+
 function renderProjectList(projects) {
   $('#project-list-title').textContent = !state.selectedTeams.length ? 'All projects' : `${state.selectedTeams.join(', ')} projects`;
-  $('#list-count').textContent = `${projects.length} ${projects.length === 1 ? 'project' : 'projects'}`;
   const columns = visibleColumns(state.columns);
-  $('#project-table-head').innerHTML = columns.map((column) => {
+  const shown = sortProjects(applyFilters(projects, state.filters), state.sort);
+  const filtered = Object.keys(normalizeFilters(state.filters)).length;
+  $('#list-count').textContent = `${shown.length} ${shown.length === 1 ? 'project' : 'projects'}${filtered ? ` of ${projects.length}` : ''}`;
+  $('#clear-filters').hidden = !filtered;
+  $('#project-table-head').innerHTML = `${columns.map((column) => {
     const order = state.sort.findIndex((sort) => sort.column === column.id);
     const sort = ariaSort(state.sort, column.id);
     const mark = sort === 'none' ? '' : `<span class="sort-mark" aria-hidden="true">${sort === 'ascending' ? '▲' : '▼'}${state.sort.length > 1 ? `<sub>${order + 1}</sub>` : ''}</span>`;
     return `<th scope="col" class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}" aria-sort="${sort}"><button type="button" data-sort-column="${column.id}">${escapeHtml(column.label)}${mark}</button></th>`;
-  }).join('');
-  const sorted = sortProjects(projects, state.sort);
-  $('#project-table-body').innerHTML = sorted.map((project) => `
-    <tr class="project-row ${project.archived ? 'archived' : ''}" data-id="${project.id}" tabindex="0">
+  }).join('')}<th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>`;
+  renderFilterRow(columns);
+  $('#project-table-body').innerHTML = shown.map((project) => {
+    const expanded = state.expanded.has(project.id);
+    return `
+    <tr class="project-row ${project.archived ? 'archived' : ''}" data-id="${project.id}" tabindex="0" aria-expanded="${expanded}">
       ${columns.map((column) => `<td class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}">${projectCell(project, column)}</td>`).join('')}
-    </tr>`).join('');
-  $('#project-table').hidden = !sorted.length;
-  $('#project-table-empty').hidden = sorted.length > 0;
+      <td class="col-actions">${canEditProject(project) ? `<button type="button" class="button" data-edit-project aria-label="Edit ${escapeHtml(project.name)}">Edit</button>` : ''}</td>
+    </tr>${expanded ? `<tr class="project-detail" data-detail-for="${project.id}"><td colspan="${columns.length + 1}">${renderCards(project)}</td></tr>` : ''}`;
+  }).join('');
+  $('#project-table').hidden = !shown.length && !filtered;
+  $('#project-table-empty').hidden = shown.length > 0;
 }
 
 function render() {
@@ -780,8 +879,8 @@ $('#cancel-archive-note').addEventListener('click', cancelArchiveSave);
 form.addEventListener('submit', saveProject);
 form.addEventListener('input', (event) => { if (event.target.type === 'range') syncOutputs(); });
 form.addEventListener('change', (event) => { if (event.target.name === 'status' || event.target.name === 'scheduleStage') syncProjectFields(); });
-document.addEventListener('click', (event) => { const project = projectFromTarget(event.target); if (project && canEditProject(project) && !event.target.closest('.project-dot,[data-external-link]')) openDialog(project); });
-document.addEventListener('keydown', (event) => { const project = projectFromTarget(event.target); if (project && canEditProject(project) && (event.key === 'Enter' || event.key === ' ') && event.target.matches('.project-row, .ranking article')) openDialog(project); });
+document.addEventListener('click', (event) => { const project = projectFromTarget(event.target); if (project && canEditProject(project) && !event.target.closest('.project-dot,[data-external-link],.project-table')) openDialog(project); });
+document.addEventListener('keydown', (event) => { const project = projectFromTarget(event.target); if (project && canEditProject(project) && (event.key === 'Enter' || event.key === ' ') && event.target.matches('.ranking article')) openDialog(project); });
 document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
   state.status = tab.dataset.status;
   state.showCompleted = state.status === 'Complete';
@@ -797,6 +896,51 @@ $('#project-table-head').addEventListener('click', (event) => {
   render();
   $(`[data-sort-column="${button.dataset.sortColumn}"]`)?.focus();
 });
+$('#project-table-body').addEventListener('click', (event) => {
+  const project = projectFromTarget(event.target);
+  if (!project || event.target.closest('[data-external-link]')) return;
+  if (event.target.closest('[data-edit-project]')) { openDialog(project); return; }
+  const cell = event.target.closest('[data-drill]');
+  if (cell) {
+    const filter = drillFilter(cell.dataset.drill, project);
+    if (!filter) return;
+    state.filters = { ...state.filters, [cell.dataset.drill]: filter };
+    saveTablePrefs();
+    renderFilterRow(visibleColumns(state.columns), { force: true });
+    render();
+    return;
+  }
+  if (event.target.closest('.project-row') && !event.target.closest('a,button')) toggleExpanded(project);
+});
+$('#project-table-body').addEventListener('keydown', (event) => {
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.project-row')) {
+    event.preventDefault();
+    toggleExpanded(projectFromTarget(event.target));
+  }
+});
+function readFilter(columnId) {
+  const inputs = [...$('#project-table-filters').querySelectorAll(`[data-filter="${columnId}"]`)];
+  const kind = filterKind(tableColumn(columnId).type);
+  if (kind === 'contains') return { contains: inputs[0]?.value || '' };
+  if (kind === 'in') return { in: inputs.filter((input) => input.checked).map((input) => input.value) };
+  return Object.fromEntries(inputs.map((input) => [input.dataset.bound, input.value]));
+}
+let filterTimer;
+$('#project-table-filters').addEventListener('input', (event) => {
+  const columnId = event.target.dataset.filter;
+  if (!columnId) return;
+  state.filters = normalizeFilters({ ...state.filters, [columnId]: readFilter(columnId) });
+  const summary = event.target.closest('details')?.querySelector('summary');
+  if (summary) summary.textContent = state.filters[columnId]?.in?.length ? `${state.filters[columnId].in.length} chosen` : 'Any';
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => { saveTablePrefs(); render(); }, 120);
+});
+$('#clear-filters').addEventListener('click', () => {
+  state.filters = {};
+  saveTablePrefs();
+  renderFilterRow(visibleColumns(state.columns), { force: true });
+  render();
+});
 $('#column-menu-panel').addEventListener('change', (event) => {
   const picked = [...$('#column-menu-panel').querySelectorAll('input:checked')].map((input) => input.value);
   if (!picked.length) { event.target.checked = true; return; }
@@ -811,7 +955,7 @@ $('#column-menu-panel').addEventListener('click', (event) => {
   renderColumnMenu();
   render();
 });
-$('#search').addEventListener('input', (event) => { state.query = event.target.value.trim(); render(); });
+$('#search').addEventListener('input', (event) => { state.query = event.target.value.trim(); syncTableUrl(); render(); });
 $('#team-filter-menu').addEventListener('change', (event) => {
   if (event.target.value === 'All') state.selectedTeams = [];
   else state.selectedTeams = [...$('#team-filter-menu').querySelectorAll('input:not([value="All"]):checked')].map((input) => input.value);
@@ -840,7 +984,11 @@ window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer
 
 load().then(() => {
   if (!state.user) return;
-  liveUpdates(['projects', 'teams'], async (kinds) => {
+  liveUpdates(['projects', 'teams', 'kanban'], async (kinds) => {
+    if (kinds.includes('kanban') || kinds.includes('projects')) {
+      state.cards.clear();
+      state.projects.filter((project) => state.expanded.has(project.id)).forEach(loadCards);
+    }
     [state.projects, state.teams] = await Promise.all([
       kinds.includes('projects') ? request() : state.projects,
       kinds.includes('teams') ? requestJson('/api/teams') : state.teams,

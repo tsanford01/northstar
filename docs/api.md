@@ -116,7 +116,7 @@ curl -b cookies.txt -X POST http://localhost:3000/api/api-tokens \
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/projects` | token endpoint | List projects. Filter with `?projectId=` or `?externalUrl=`. |
+| `GET` | `/api/projects` | token endpoint | List projects. Filter with `?projectId=` or `?externalUrl=`, and sort or filter like the projects table (below). |
 | `POST` | `/api/projects` | token endpoint | Create a project. `name`, `impact`, `urgency`, `confidence` and `effort` are required. |
 | `PUT` | `/api/projects/:id` | token endpoint | Partially update a project. |
 | `DELETE` | `/api/projects/:id` | token endpoint | Delete a project. `204`. |
@@ -129,6 +129,18 @@ curl -b cookies.txt -X POST http://localhost:3000/api/api-tokens \
 Optional project fields: `projectId`, `externalUrl`, `description`, `retrospective`, `blockedNote`,
 `archiveNote`, `restoreNote`, `team`, `status` (`Scheduled`, `Active`, `On hold`, `Blocked`,
 `Complete`), `scheduleStage`, `capacity`, `archived`, `hiddenFromReadOnly`.
+
+Table parameters, the same ones the projects table puts in its URL:
+
+| Parameter | Example | Meaning |
+| --- | --- | --- |
+| `sort` | `sort=score:desc,name:asc` | Sort keys in order; `asc` or `desc`. Default `score:desc,updated:desc`. |
+| `q` | `q=billing` | Text in the ID, name, team, description or source link. |
+| `f.<column>` (text) | `f.name=api` | Contains, any case. Text columns: `id`, `name`. |
+| `f.<column>` (choice) | `f.team=Platform&f.team=Design` | Any of the repeated values. Choice columns: `team`, `status`. |
+| `f.<column>` (range) | `f.impact=5..`, `f.updated=2026-01-01..2026-01-31` | Inclusive `min..max`, either end optional; a single value means exactly it. Range columns: `impact`, `urgency`, `confidence`, `effort`, `people`, `score`, `cards`, `decisions`, `updated`. |
+
+Unknown columns are ignored. A `cols=` parameter (shown columns) is accepted and ignored by the API.
 
 Read-only fields on every listed project: `score`, `cardCount` (linked cards), `openDecisionCount`
 (linked, unarchived cards with a decision that has no decided option), `createdAt`, `updatedAt`.
@@ -187,7 +199,7 @@ from `GET /api/kanban?teamId=<id>`). Creating a column without
 | `GET` | `/api/kanban/report` | token endpoint | Every card's column history and durations. |
 | `POST` | `/api/kanban/columns` | token endpoint | Create a column: `{ "name" }`. |
 | `PUT`, `DELETE` | `/api/kanban/columns/:id` | token endpoint | Rename (`name`) or reorder (`position`, 0-based on that team's board; the others shift so positions stay 0..n-1) a column, or delete it (and its cards). |
-| `GET` | `/api/kanban/cards` | token endpoint | Find cards by `?key=`, `?externalUrl=`, `?projectId=`, `?decision=open`, `?tag=` or `?source=`; add `?archived=include` or `?archived=only` for archived cards. |
+| `GET` | `/api/kanban/cards` | token endpoint | Each card includes `columnName`. Find cards by `?key=`, `?externalUrl=`, `?projectId=`, `?decision=open`, `?tag=` or `?source=`; add `?archived=include` or `?archived=only` for archived cards. |
 | `POST` | `/api/kanban/cards` | token endpoint | Create a card: `columnId` and `title` required. |
 | `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | token endpoint | Read, partially update (including `columnId` to move and `archived: true/false` to archive or restore) or delete a card. |
 | `PUT` | `/api/kanban/cards/upsert` | token endpoint | Create or update a card by `externalUrl` (default) or by its own `key` with `?key=key`. Returns `{ created, card }`. |

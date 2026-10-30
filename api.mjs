@@ -1,4 +1,5 @@
 import { AuthError, createAuthService } from './auth-service.mjs';
+import { applyFilters, DEFAULT_SORT, hasTableParams, paramsToState, sortProjects } from './public/shared/project-table.js';
 import { apiTokenAccess, createDataApi } from './data-api.mjs';
 import { json, readJson } from './http-utils.mjs';
 import { createPlanningService, PlanningError } from './planning-service.mjs';
@@ -333,7 +334,13 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       const match = url.pathname.match(/^\/api\/projects(?:\/(\d+))?$/);
       if (!match) return false;
       const id = match[1] ? Number(match[1]) : null;
-      if (req.method === 'GET' && !id) return json(res, 200, projects.list({ ...lookupParams(url, ['projectId', 'externalUrl']), includeHidden: true }).filter((project) => user.role === 'admin' || !project.hiddenFromReadOnly || canManageTeam(user, teamIdForName(project.team)))), true;
+      if (req.method === 'GET' && !id) {
+        const visible = projects.list({ ...lookupParams(url, ['projectId', 'externalUrl']), includeHidden: true }).filter((project) => user.role === 'admin' || !project.hiddenFromReadOnly || canManageTeam(user, teamIdForName(project.team)));
+        if (!hasTableParams(url.searchParams)) return json(res, 200, visible), true;
+        // The projects table's own sort and filter parameters (public/shared/project-table.js).
+        const table = paramsToState(url.searchParams);
+        return json(res, 200, sortProjects(applyFilters(visible, table.filters, table.query), table.sort.length ? table.sort : DEFAULT_SORT)), true;
+      }
       if (req.method === 'POST' && !id) {
         if (user.role === 'read_only') throw new AuthError(403, 'Team manager access is required.');
         const input = await readJson(req);
