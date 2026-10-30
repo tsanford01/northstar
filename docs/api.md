@@ -96,9 +96,10 @@ curl -b cookies.txt -X POST http://localhost:3000/api/users \
 | --- | --- | --- | --- |
 | `GET` | `/api/api-token` | admin session | Whether the single UI token or `API_TOKEN` is configured. |
 | `POST` | `/api/api-token` | admin session | Generate the single UI token, revoking the previous one. Returned once. |
-| `GET` | `/api/api-tokens` | admin session | List named tokens (never the token or its hash). |
+| `GET` | `/api/api-tokens` | admin session | List named tokens (never the token or its hash), each with `createdBy: { id, username }` or `null`. |
 | `POST` | `/api/api-tokens` | admin session | Create a named token: `{ "name", "scope": "read" \| "write" }`. Returned once. |
 | `DELETE` | `/api/api-tokens/:id` | admin session | Revoke a named token. `204`. |
+| `GET` | `/api/token/self` | any token | The calling token's `{ name, scope, createdBy }`. `createdBy` is `null` for the **API access** / `API_TOKEN` token, or when the creating user was deleted. A session alone gets `401`. |
 
 ```sh
 curl -b cookies.txt -X POST http://localhost:3000/api/api-tokens \
