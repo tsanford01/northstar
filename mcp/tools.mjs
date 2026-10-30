@@ -70,6 +70,25 @@ export const tools = [
     run: (api) => api.request('GET', '/api/status-export'),
   },
   {
+    name: 'list_views',
+    description: "Saved views of the projects table that belong to this token's user: each has a name and the table parameters (search, sort, columns, filters).",
+    inputSchema: object({}),
+    run: (api) => api.request('GET', '/api/views'),
+  },
+  {
+    name: 'apply_view',
+    description: 'The projects a saved view shows, in its order. Name the view by id or by name (any case).',
+    inputSchema: object({ id, name: text(80, 1) }),
+    async run(api, { id: viewId, name }) {
+      if (viewId === undefined && name === undefined) throw Object.assign(new Error('Give the view id or name.'), { status: 400 });
+      const view = (await api.request('GET', '/api/views')).find((item) => (viewId !== undefined ? item.id === viewId : item.name.toLocaleLowerCase() === name.toLocaleLowerCase()));
+      if (!view) throw Object.assign(new Error('View not found.'), { status: 404 });
+      // The stored query string goes on the path as is: repeated filters (f.team=A&f.team=B) must survive.
+      const projects = await api.request('GET', `/api/projects${view.params ? `?${view.params}` : ''}`);
+      return { view: { id: view.id, name: view.name, params: view.params }, projects };
+    },
+  },
+  {
     name: 'upsert_project',
     write: true,
     description: 'Create a project, or update the one whose key (projectId or externalUrl) matches. Repeating a call changes nothing.',

@@ -51,6 +51,8 @@ The token comes from your environment, so it is not written into the file:
 | `get_activity` | read | The activity feed (`since`, `limit`) |
 | `list_teams` | read | Teams with capacity and assignments |
 | `status_export` | read | The project status export as CSV |
+| `list_views` | read | Saved views of the projects table belonging to the token's user |
+| `apply_view` | read | The projects a saved view shows (by `id` or `name`), in its order |
 | `upsert_project` | write | Create, or update by `key` (`projectId` or `externalUrl`) |
 | `move_project` | write | Set impact and urgency (1–10), with an optional comment |
 | `upsert_card` | write | Create, or update the card matched by `externalUrl` (default) or, with `key: "key"`, by its own card key |

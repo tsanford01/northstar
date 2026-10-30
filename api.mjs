@@ -8,6 +8,7 @@ import { createTeamService } from './team-service.mjs';
 import { createSsoService } from './sso-service.mjs';
 import { createSsoSettings } from './sso-settings.mjs';
 import { createKanbanService, KanbanError } from './kanban-service.mjs';
+import { createViewsService, ViewError } from './views-service.mjs';
 import { ActivityError, createActivityService } from './activity-service.mjs';
 import { createEventsService } from './events-service.mjs';
 import { createFailureLimiter, positiveInteger } from './rate-limit.mjs';
@@ -41,6 +42,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
   const projects = createProjectService(db);
   const teams = createTeamService(db);
   const kanban = createKanbanService(db);
+  const views = createViewsService(db);
   const activity = createActivityService(db);
   const events = createEventsService({ projects, kanban, teams });
   const dataApi = createDataApi(db, projects, { apiToken });
@@ -154,7 +156,8 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       const sessionUser = auth.userForRequest(req);
       const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
       const teamsPath = /^\/api\/(?:teams(?:\/\d+)?|capacity)$/.test(url.pathname);
-      const tokenPath = kanbanPath || projectsPath || teamsPath || ['/api/activity', '/api/events', '/api/version'].includes(url.pathname);
+      const viewsPath = /^\/api\/views(?:\/\d+)?$/.test(url.pathname);
+      const tokenPath = kanbanPath || projectsPath || teamsPath || viewsPath || ['/api/activity', '/api/events', '/api/version'].includes(url.pathname);
       const tokenAccess = tokenPath ? bearerAccess : null;
       if (tokenAccess?.scope === 'read' && req.method !== 'GET') throw new AuthError(403, 'This API token is read-only.');
       // Tokens belong to no team: a write token acts as an admin, a read token as a read-only viewer.
@@ -169,6 +172,18 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
         }
       } else requireUser(req);
       const requireUserAdmin = () => { if (user.role !== 'admin') throw new AuthError(403, 'Admin access is required.'); };
+      if (viewsPath) {
+        // A view belongs to a person: the signed-in user, or the user who created the API token.
+        const ownerId = tokenAccess ? tokenAccess.createdBy?.id : user.id;
+        if (!ownerId) throw new ViewError(400, 'Saved views need a user: use a session or an API token created by a user.');
+        const viewId = Number(url.pathname.split('/')[3]) || null;
+        if (req.method === 'GET' && !viewId) return json(res, 200, views.list(ownerId)), true;
+        if (req.method === 'GET' && viewId) return json(res, 200, views.get(ownerId, viewId)), true;
+        if (req.method === 'POST' && !viewId) return json(res, 201, views.create(ownerId, await readJson(req))), true;
+        if (req.method === 'PUT' && viewId) return json(res, 200, views.update(ownerId, viewId, await readJson(req))), true;
+        if (req.method === 'DELETE' && viewId) { views.delete(ownerId, viewId); res.writeHead(204); res.end(); return true; }
+        return json(res, 405, { error: 'Method not allowed.' }), true;
+      }
       // Kanban boards belong to teams. A request names its board with ?teamId; without it, list and
       // column calls use the first team's board, and card calls use the card's own team.
       const requestedTeamId = Number(url.searchParams.get('teamId')) || null;
@@ -365,7 +380,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       }
       return json(res, 405, { error: 'Method not allowed.' }), true;
     } catch (error) {
-      const status = error instanceof PlanningError || error instanceof ProjectError || error instanceof AuthError || error instanceof KanbanError || error instanceof ActivityError ? error.status : 400;
+      const status = error instanceof PlanningError || error instanceof ProjectError || error instanceof AuthError || error instanceof KanbanError || error instanceof ActivityError || error instanceof ViewError ? error.status : 400;
       const details = error instanceof PlanningError ? error.data : {};
       json(res, status, { error: error instanceof Error ? error.message : 'Request failed.', ...details });
       return true;
