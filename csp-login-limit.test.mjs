@@ -17,12 +17,17 @@ test('pages carry a self-only Content-Security-Policy and use no inline scripts 
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 200, path);
     const policy = response.headers.get('content-security-policy') || '';
-    for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"]) {
+    for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "connect-src 'self'", "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'"]) {
       assert.ok(policy.includes(directive), `${path} lacks ${directive}`);
     }
     assert.doesNotMatch(policy, /unsafe-inline|unsafe-eval|https?:/, path);
   }
   assert.equal((await fetch(`${base}/app.js`)).headers.get('content-security-policy'), null);
+
+  // Live updates stay same-origin, so connect-src 'self' covers the event stream and the polling fallback.
+  const live = await readFile(join('public', 'live-updates.js'), 'utf8');
+  assert.match(live, /EventSourceImpl\('\/api\/events'\)/);
+  assert.match(live, /fetchImpl\('\/api\/version'/);
 
   for (const name of pages) {
     const html = await readFile(join('public', name), 'utf8');
