@@ -74,6 +74,7 @@
             <div class="matrix-controls">
               <div class="matrix-key" aria-label="Project status colors">
                 <strong>Status</strong>
+                <span class="idea-key" hidden><i class="status-swatch idea"></i>Idea</span>
                 <span><i class="status-swatch to-plan"></i>To plan</span>
                 <span><i class="status-swatch planning"></i>Planning</span>
                 <span><i class="status-swatch active"></i>Active</span>
@@ -83,6 +84,7 @@
               </div>
               <div class="matrix-actions">
                 <label class="completed-toggle"><input id="show-completed" type="checkbox"> Show completed</label>
+                <label class="completed-toggle"><input id="show-ideas" type="checkbox"> Show ideas</label>
                 <button class="matrix-expand" id="toggle-matrix-presentation" type="button" aria-pressed="false" aria-label="Expand priority matrix for presentation"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2H2v4M10 2h4v4M14 10v4h-4M6 14H2v-4"></path></svg><span>Present</span></button>
               </div>
             </div>
@@ -137,7 +139,7 @@
           <label class="field"><span>Team</span><select name="team" required></select></label>
           <label class="field"><span>Status</span><select name="status"><option>Scheduled</option><option selected>Active</option><option>On hold</option><option>Blocked</option><option>Complete</option></select></label>
         </div>
-        <label class="field wide scheduled-stage-field" id="scheduled-stage-field" hidden><span>Scheduled stage</span><select name="scheduleStage"><option>To plan</option><option>Planning</option></select></label>
+        <label class="field wide scheduled-stage-field" id="scheduled-stage-field" hidden><span>Scheduled stage</span><select name="scheduleStage"><option>Idea</option><option>To plan</option><option>Planning</option></select></label>
         <label class="field wide" id="capacity-field"><span>People assigned <small id="capacity-help">Counts against team capacity</small></span><input name="capacity" type="number" min="0" max="999" step="1" value="0"></label>
         <label class="field wide"><span>Context <small>Optional</small></span><textarea name="description" maxlength="1000" rows="3" placeholder="What outcome does this project unlock?"></textarea></label>
         <p class="project-linked-count" id="project-dialog-card-count" hidden></p>

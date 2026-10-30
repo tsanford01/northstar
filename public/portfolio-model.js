@@ -1,5 +1,5 @@
 import { initials } from './browser-utils.js';
-import { isFocusProject } from './shared/project-rules.js';
+import { isFocusProject, isIdea } from './shared/project-rules.js';
 
 export function projectLabel(project) {
   return project.projectId?.trim() || initials(project.name);
@@ -32,7 +32,7 @@ export function selectPortfolioProjects(projects, filters) {
     visible,
     portfolio,
     selectedPortfolio,
-    matrix: visible.filter((project) => !project.archived && (filters.showCompleted || project.status !== 'Complete')),
+    matrix: visible.filter((project) => !project.archived && (filters.showCompleted || project.status !== 'Complete') && (filters.showIdeas || !isIdea(project))),
     active: selectedPortfolio.filter((project) => project.status === 'Active'),
   };
 }

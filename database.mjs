@@ -14,7 +14,7 @@ const projectsTableSql = `
     restore_note TEXT NOT NULL DEFAULT '',
     team TEXT NOT NULL DEFAULT 'Platform',
     status TEXT NOT NULL DEFAULT 'Active' CHECK(status IN ('Scheduled', 'Active', 'On hold', 'Blocked', 'Complete')),
-    schedule_stage TEXT NOT NULL DEFAULT 'To plan' CHECK(schedule_stage IN ('To plan', 'Planning')),
+    schedule_stage TEXT NOT NULL DEFAULT 'To plan' CHECK(schedule_stage IN ('Idea', 'To plan', 'Planning')),
     capacity INTEGER NOT NULL DEFAULT 0 CHECK(capacity BETWEEN 0 AND 999),
     archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0, 1)),
     impact INTEGER NOT NULL CHECK(impact BETWEEN 1 AND 10),
@@ -86,7 +86,7 @@ function migrateProjects(db) {
   ensureColumn(db, 'projects', 'restore_note', "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, 'projects', 'external_url', "TEXT NOT NULL DEFAULT ''");
   if (!hasColumn(db, 'projects', 'schedule_stage')) {
-    ensureColumn(db, 'projects', 'schedule_stage', "TEXT NOT NULL DEFAULT 'To plan' CHECK(schedule_stage IN ('To plan', 'Planning'))");
+    ensureColumn(db, 'projects', 'schedule_stage', "TEXT NOT NULL DEFAULT 'To plan' CHECK(schedule_stage IN ('Idea', 'To plan', 'Planning'))");
     db.exec("UPDATE projects SET schedule_stage = 'Planning' WHERE status IN ('Scheduled', 'Planned') AND capacity > 0");
   }
 
@@ -109,10 +109,39 @@ function migrateProjects(db) {
   }
 }
 
-function createRelatedTables(db) {
-  db.exec(`
+const SCHEDULE_STAGE_CHECK = "CHECK(schedule_stage IN ('Idea', 'To plan', 'Planning'))";
+const PROJECT_INDEXES_SQL = `
     CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
-    CREATE INDEX IF NOT EXISTS idx_projects_priority ON projects(impact DESC, urgency DESC);
+    CREATE INDEX IF NOT EXISTS idx_projects_priority ON projects(impact DESC, urgency DESC);`;
+
+// Widens the Scheduled stage check to allow Idea. SQLite cannot alter a check, so the table is
+// rebuilt from its own current definition (every column it has gained since), with only the
+// check changed, and its indexes are recreated.
+function migrateScheduleStages(db) {
+  if (db.dialect === 'postgres') {
+    db.exec('ALTER TABLE projects DROP CONSTRAINT IF EXISTS projects_schedule_stage_check');
+    db.exec(`ALTER TABLE projects ADD CONSTRAINT projects_schedule_stage_check ${SCHEDULE_STAGE_CHECK}`);
+    return;
+  }
+  const definition = db.prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'projects'").get().sql;
+  if (definition.includes(SCHEDULE_STAGE_CHECK) || !definition.includes("CHECK(schedule_stage IN ('To plan', 'Planning'))")) return;
+  const widened = definition.replace("CHECK(schedule_stage IN ('To plan', 'Planning'))", SCHEDULE_STAGE_CHECK).replace(/^CREATE TABLE "?projects"?/, 'CREATE TABLE projects_new');
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    transaction(db, () => db.exec(`
+      ${widened};
+      INSERT INTO projects_new SELECT * FROM projects;
+      DROP TABLE projects;
+      ALTER TABLE projects_new RENAME TO projects;
+      ${PROJECT_INDEXES_SQL}
+    `));
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+function createRelatedTables(db) {
+  db.exec(`${PROJECT_INDEXES_SQL}
     CREATE TABLE IF NOT EXISTS portfolio_settings (
       id INTEGER PRIMARY KEY CHECK(id = 1),
       total_capacity INTEGER NOT NULL DEFAULT 0 CHECK(total_capacity BETWEEN 0 AND 9999)
@@ -414,6 +443,7 @@ export function openDatabase(filePath, { client = 'sqlite', connectionString } =
         migrateTeamManagerRole(db);
         migratePlanningVotes(db);
         migrateSavedViews(db);
+        migrateScheduleStages(db);
         db.exec(`
           CREATE INDEX IF NOT EXISTS idx_planning_room_projects ON planning_session_projects(session_id, position);
           CREATE INDEX IF NOT EXISTS idx_planning_votes_session_project ON planning_votes(session_id, project_id, updated_at);
@@ -434,6 +464,7 @@ export function openDatabase(filePath, { client = 'sqlite', connectionString } =
   migrateTeamManagerRole(db);
   migratePlanningVotes(db);
   migrateSavedViews(db);
+  migrateScheduleStages(db);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_planning_room_projects ON planning_session_projects(session_id, position);
     CREATE INDEX IF NOT EXISTS idx_planning_votes_session_project ON planning_votes(session_id, project_id, updated_at);

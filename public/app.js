@@ -2,6 +2,7 @@ import {
   $, capacityForTeams, escapeHtml, isFocusProject, needsBlockedNote, requestJson, scoresFromPoint, showToast, syncRangeOutputs,
 } from './browser-utils.js';
 import { layoutProjectDots } from './matrix-geometry.js';
+import { isIdea } from './shared/project-rules.js';
 import { liveUpdates } from './live-updates.js';
 import { apiTokenDialogState } from './api-token-dialog.js';
 import { createDismissGroup } from './dismiss.js';
@@ -18,7 +19,7 @@ import {
   normalizeFilters, paramsToState, sortProjects, stateToParams, toggleSort, visibleColumns,
 } from './shared/project-table.js';
 
-const state = { views: [], sort: DEFAULT_SORT, columns: null, filters: {}, expanded: new Set(), cards: new Map(), user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
+const state = { views: [], sort: DEFAULT_SORT, columns: null, filters: {}, expanded: new Set(), cards: new Map(), user: null, projects: [], teams: [], selectedTeams: [], status: 'All', query: '', showCompleted: false, showIdeas: false, showArchived: false, dragged: null, pendingMove: null, pendingBlockedSave: null, pendingArchiveSave: null };
 const matrix = $('#matrix');
 const dialog = $('#project-dialog');
 const planningSetupDialog = $('#planning-setup-dialog');
@@ -144,6 +145,15 @@ async function request(path = '', options) {
   return requestJson(`/api/projects${path}`, options);
 }
 
+async function promoteProject(project) {
+  try {
+    const promoted = await request(`/${project.id}/promote`, { method: 'POST' });
+    state.projects = state.projects.map((item) => (item.id === promoted.id ? { ...item, ...promoted } : item));
+    render();
+    toast(`${project.name} is now a plan`);
+  } catch (error) { toast(error.message); }
+}
+
 async function load() {
   try {
     state.user = await requestJson('/api/auth/me');
@@ -184,7 +194,8 @@ function renderSummary(allPortfolioProjects, portfolioProjects, matrixProjects, 
   const hasAnyProjects = allPortfolioProjects.length > 0;
   $('#matrix-empty-title').textContent = hasAnyProjects ? 'No projects to show' : 'Map your first project';
   $('#matrix-empty-copy').textContent = hasAnyProjects
-    ? (portfolioProjects.some((project) => project.status === 'Complete') && !state.showCompleted ? 'Completed projects are hidden. Use “Show completed” above to include them.' : 'No projects match the current filters.')
+    ? (portfolioProjects.some((project) => project.status === 'Complete') && !state.showCompleted ? 'Completed projects are hidden. Use “Show completed” above to include them.'
+      : portfolioProjects.some(isIdea) && !state.showIdeas ? 'Ideas are hidden. Use “Show ideas” above to include them.' : 'No projects match the current filters.')
     : 'Add current work, score it, and let the trade-offs become visible.';
   $('#empty-add').hidden = hasAnyProjects;
   const boards = emptyTeamBoards(portfolioProjects, state.teams, state.selectedTeams);
@@ -200,7 +211,7 @@ function renderMatrix(matrixProjects) {
   const dots = matrixProjects.map((project) => {
     const dot = document.createElement('button');
     dot.type = 'button';
-    dot.className = `project-dot status-${projectStatusClass(project)}`;
+    dot.className = `project-dot status-${projectStatusClass(project)}${isIdea(project) ? ' provisional' : ''}`;
     const label = projectLabel(project);
     if (label.length > 2) dot.classList.add('wide-id');
     dot.dataset.id = project.id;
@@ -292,7 +303,8 @@ function projectCell(project, column) {
     case 'id': return project.projectId ? drill(column, `<small class="project-id">${escapeHtml(project.projectId)}</small>`, project.projectId) : '';
     case 'name': return `${drill(column, `<span class="project-name">${escapeHtml(project.name)}</span>`, project.name)}${project.externalUrl ? `<a class="source-link" data-external-link href="${escapeHtml(project.externalUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open external source for ${escapeHtml(project.name)}" title="Open external source">↗ Source</a>` : ''}${project.archived ? '<small class="archive-tag">Archived</small>' : ''}${project.status === 'Complete' && project.retrospective ? '<small class="retro-tag">Retrospective</small>' : ''}${project.description ? `<span class="description">${escapeHtml(project.description)}</span>` : ''}`;
     case 'status': return drill(column, `<span class="badge ${projectStatusClass(project)}">${escapeHtml(projectStatusLabel(project))}</span>`, project.status);
-    case 'score': return drill(column, `<span class="score" title="Priority score">${project.score}</span>`, `score ${project.score}`);
+    case 'score': return drill(column, `<span class="score${isIdea(project) ? ' provisional' : ''}" title="${isIdea(project) ? 'Provisional score: this is an idea' : 'Priority score'}">${project.score}</span>`, `score ${project.score}`);
+    case 'impact': case 'urgency': case 'confidence': case 'effort': return isIdea(project) ? drill(column, `<span class="provisional" title="Provisional: this is an idea">${escapeHtml(String(value))}</span>`, `${column.label} ${value}`) : drill(column, escapeHtml(String(value)), `${column.label} ${value}`);
     case 'updated': { const { iso, text } = formatUpdated(project.updatedAt); return iso ? drill(column, `<time datetime="${iso}">${escapeHtml(text)}</time>`, text) : escapeHtml(text); }
     default: return value === '' || value === null || value === undefined ? '' : drill(column, escapeHtml(String(value)), `${column.label} ${value}`);
   }
@@ -486,7 +498,7 @@ function renderProjectList(projects, boards = []) {
     return `
     <tr class="project-row ${project.archived ? 'archived' : ''}" data-id="${project.id}" tabindex="0" aria-expanded="${expanded}">
       ${columns.map((column) => `<td class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}">${projectCell(project, column)}</td>`).join('')}
-      <td class="col-actions">${canEditProject(project) ? `<button type="button" class="button" data-edit-project aria-label="Edit ${escapeHtml(project.name)}">Edit</button>` : ''}</td>
+      <td class="col-actions">${canEditProject(project) ? `${isIdea(project) ? `<button type="button" class="button" data-promote-project aria-label="Promote ${escapeHtml(project.name)} to plan">Promote to plan</button>` : ''}<button type="button" class="button" data-edit-project aria-label="Edit ${escapeHtml(project.name)}">Edit</button>` : ''}</td>
     </tr>${expanded ? `<tr class="project-detail" data-detail-for="${project.id}"><td colspan="${columns.length + 1}">${renderCards(project)}</td></tr>` : ''}`;
   }).join('');
   $('#project-table').hidden = !shown.length && !filtered;
@@ -1025,6 +1037,7 @@ $('#project-table-head').addEventListener('click', (event) => {
 $('#project-table-body').addEventListener('click', (event) => {
   const project = projectFromTarget(event.target);
   if (!project || event.target.closest('[data-external-link]')) return;
+  if (event.target.closest('[data-promote-project]')) { void promoteProject(project); return; }
   if (event.target.closest('[data-edit-project]')) { openDialog(project); return; }
   const cell = event.target.closest('[data-drill]');
   if (cell) {
@@ -1134,6 +1147,7 @@ $('#team-filter-menu').addEventListener('change', (event) => {
   render();
 });
 $('#show-completed').addEventListener('change', (event) => { state.showCompleted = event.target.checked; render(); });
+$('#show-ideas').addEventListener('change', (event) => { state.showIdeas = event.target.checked; $('.idea-key').hidden = !state.showIdeas; render(); });
 $('#show-archived').addEventListener('change', (event) => { state.showArchived = event.target.checked; render(); });
 $('#show-all').addEventListener('click', () => { state.status = 'All'; state.selectedTeams = []; state.query = ''; $('#search').value = ''; document.querySelectorAll('.tab').forEach((tab) => tab.classList.toggle('active', tab.dataset.status === 'All')); render(); $('.project-list').scrollIntoView({ behavior: 'smooth' }); });
 dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });

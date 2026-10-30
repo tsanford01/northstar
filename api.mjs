@@ -154,7 +154,7 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       }
 
       const sessionUser = auth.userForRequest(req);
-      const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves)?|upsert))?$/.test(url.pathname);
+      const projectsPath = /^\/api\/projects(?:\/(?:\d+(?:\/moves|\/promote)?|upsert))?$/.test(url.pathname);
       const teamsPath = /^\/api\/(?:teams(?:\/\d+)?|capacity)$/.test(url.pathname);
       const viewsPath = /^\/api\/views(?:\/\d+)?$/.test(url.pathname);
       const tokenPath = kanbanPath || projectsPath || teamsPath || viewsPath || ['/api/activity', '/api/events', '/api/version'].includes(url.pathname);
@@ -346,6 +346,15 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
         return json(res, result.created ? 201 : 200, result), true;
       }
 
+      const promoteMatch = url.pathname.match(/^\/api\/projects\/(\d+)\/promote$/);
+      if (promoteMatch) {
+        if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed.' }), true;
+        const promoteId = Number(promoteMatch[1]);
+        const current = db.prepare('SELECT team FROM projects WHERE id = ?').get(promoteId);
+        if (!current) throw new ProjectError(404, 'Project not found.');
+        if (user.role !== 'admin') requireTeamManager(user, teamIdForName(current.team));
+        return json(res, 200, projects.promote(promoteId, { actor: user.username })), true;
+      }
       const match = url.pathname.match(/^\/api\/projects(?:\/(\d+))?$/);
       if (!match) return false;
       const id = match[1] ? Number(match[1]) : null;

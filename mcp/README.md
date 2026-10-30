@@ -43,7 +43,7 @@ The token comes from your environment, so it is not written into the file:
 
 | Tool | Access | What it does |
 |---|---|---|
-| `list_projects` | read | List projects, optionally by `projectId` or `externalUrl` |
+| `list_projects` | read | List projects, optionally by `projectId`, `externalUrl` or `stage` (`Idea` lists the ideas) |
 | `get_project` | read | One project by `id` |
 | `list_cards` | read | Kanban cards across boards by `key`, `externalUrl`, `projectId`, `teamId`, `assignee`, `tag`, `source` or `decision: "open"`. Archived cards appear only with `archived: "include"` or `"only"`. |
 | `get_card_by_key` | read | One card by its stable `key` |

@@ -65,3 +65,6 @@
 .project-preview-footer small { color:var(--muted); font-size:9px; }
 .empty-state { position:absolute; z-index:2; inset:0; margin:auto; width:min(280px,70%); height:max-content; padding:22px; border-radius:14px; background:rgb(255 255 255 / 92%); text-align:center; box-shadow:0 10px 38px rgb(30 50 43 / 8%); }
 .empty-state.hidden { display:none; }.empty-icon { color:#9c7668; font-size:22px; }.empty-state h3 { margin:8px 0 5px; font:500 18px Georgia,serif; }.empty-state p { margin:0 0 15px; color:var(--muted); font-size:11px; line-height:1.5; }
+.status-swatch.idea { background:#b9ad8f; }
+.project-dot.status-scheduled-idea { --project:#b9ad8f; }
+.project-dot.provisional { opacity:.7; border-style:dashed; }

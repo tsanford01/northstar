@@ -12,9 +12,9 @@ const projects = [
 const ids = (list) => list.map((project) => project.id);
 
 test('the table has the agreed columns in order', () => {
-  assert.deepEqual(COLUMN_IDS, ['id', 'name', 'team', 'status', 'impact', 'urgency', 'confidence', 'effort', 'people', 'score', 'cards', 'decisions', 'updated']);
+  assert.deepEqual(COLUMN_IDS, ['id', 'name', 'team', 'status', 'stage', 'impact', 'urgency', 'confidence', 'effort', 'people', 'score', 'cards', 'decisions', 'updated']);
   assert.deepEqual(visibleColumns(MOBILE_COLUMNS).map((column) => column.id), ['name', 'status', 'score']);
-  assert.equal(visibleColumns(['nope']).length, COLUMN_IDS.length);
+  assert.deepEqual(visibleColumns(['nope']).map((column) => column.id), COLUMN_IDS.filter((id) => id !== 'stage'));
 });
 
 test('default sort is score, highest first', () => {
