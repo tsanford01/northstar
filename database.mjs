@@ -226,6 +226,17 @@ function createRelatedTables(db) {
       PRIMARY KEY(session_id, project_id)
     );
     CREATE INDEX IF NOT EXISTS idx_planning_sessions_project ON planning_sessions(project_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS project_changes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      field TEXT NOT NULL CHECK(field IN ('status', 'archived', 'team', 'capacity')),
+      from_value TEXT NOT NULL,
+      to_value TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      actor TEXT NOT NULL DEFAULT '',
+      changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_project_changes_changed ON project_changes(changed_at, id);
     CREATE TABLE IF NOT EXISTS api_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,

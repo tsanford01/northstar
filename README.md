@@ -289,10 +289,30 @@ fields for its type:
 | `planning.decided` | project fields, final `scores`, `comment` |
 | `card.created`, `card.moved` | `cardId`, `title`, `projectId`, `columnId`, `columnName` |
 | `card.note` | `cardId`, `title`, `projectId`, `body` |
+| `project.status` | project fields, `from`, `to`, `note` (the blocked note when `to` is `Blocked`), `actor` |
+| `project.archived`, `project.restored` | project fields, `note` (the archive or restore note), `actor` |
+| `project.team`, `project.capacity` | project fields, `from`, `to`, `actor` |
+
+Status, archive, team and capacity events are recorded from the time this history was added; earlier
+changes are not backfilled. `actor` is the username, or the API token's name.
 
 `limit` (1–500, default 100) caps the number of items. `since` (an ISO 8601 timestamp) returns only
 events at or after that time, compared to the whole second; to poll, pass the newest `at` you have seen and skip items whose `id`
 you already hold. Read-only callers do not see events for projects hidden from read-only users.
+
+### Live updates
+
+The matrix, kanban and teams pages update by themselves when data changes in another tab, from a
+teammate, or through the API. `GET /api/events` is a server-sent event stream (browser session
+or any API token). After each committed write it sends `{ "version": N, "kinds": [...] }`, where
+the kinds are those whose content changed (`projects`, `kanban`, `teams`). Every event has an `id`
+for `Last-Event-ID`, and the stream sends a heartbeat every 25 seconds. Read-only viewers are
+compared against what they can see, so a change to a hidden project sends them nothing. A page
+waits to refresh while a dialog is open, a form field has focus or a drag is in progress. If the
+stream is unavailable, pages poll `GET /api/version` every 10 seconds while the tab is visible.
+
+The event emitter is in-process. Several Northstar servers sharing one PostgreSQL database would
+need PostgreSQL `LISTEN`/`NOTIFY` to share events.
 
 ## Code structure
 
