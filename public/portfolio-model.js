@@ -37,6 +37,15 @@ export function selectPortfolioProjects(projects, filters) {
   };
 }
 
+// Selected teams that have no projects yet but do have kanban cards, so an empty view can point
+// to their boards instead of looking like there is nothing there.
+export function emptyTeamBoards(selectedPortfolio, teams, selectedTeams) {
+  if (!selectedTeams.length || selectedPortfolio.length) return [];
+  return teams
+    .filter((team) => selectedTeams.includes(team.name) && Number(team.boardCardCount) > 0)
+    .map((team) => ({ id: team.id, name: team.name, cardCount: Number(team.boardCardCount) }));
+}
+
 export function findFocusNowOccupant(projects, project, impact, urgency) {
   if (!isFocusProject({ ...project, impact, urgency })) return null;
   const team = String(project.team || '').trim().toLocaleLowerCase();
