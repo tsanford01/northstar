@@ -20,9 +20,13 @@ const decisionFilter = document.querySelector('#decision-filter');
 const showArchived = document.querySelector('#show-archived');
 const archiveButton = document.querySelector('#archive-card');
 const assigneeOptions = document.querySelector('#assignee-options');
+const teamBoard = document.querySelector('#team-board');
 let data = { columns: [], cards: [] };
 let projects = [];
 let canEdit = false;
+let canManageColumns = false;
+let currentUser;
+let selectedTeamId;
 let editingId = null;
 let selectedTag = '';
 let selectedProject = 'all';
@@ -36,7 +40,7 @@ function boardPath() {
 }
 
 function api(path = '', options) {
-  return requestJson(`/api/kanban${path}`, options, 'The board could not be saved.');
+  return requestJson(`/api/kanban${path}${path.includes('?') ? '&' : '?'}teamId=${selectedTeamId}`, options, 'The board could not be saved.');
 }
 
 function mutation(method, body) {
@@ -63,7 +67,7 @@ function render() {
       && (selectedDecision !== 'open' || (card.decision && !card.decision.decidedOption))
       && (selectedProject === 'all' || (selectedProject === 'none' ? card.projectId === null : String(card.projectId) === selectedProject)));
     return `<section class="kanban-column" data-column-id="${column.id}" aria-label="${escapeHtml(column.name)}">
-      <header class="kanban-column-head"><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${canEdit ? `<div class="kanban-column-actions"><button type="button" class="column-rename" aria-label="Rename ${escapeHtml(column.name)}" title="Rename column">✎</button><button type="button" class="column-delete" aria-label="Delete ${escapeHtml(column.name)}" title="Delete column">×</button></div>` : ''}</header>
+      <header class="kanban-column-head"><div><h2>${escapeHtml(column.name)}</h2><span>${cards.length}</span></div>${canManageColumns ? `<div class="kanban-column-actions"><button type="button" class="column-rename" aria-label="Rename ${escapeHtml(column.name)}" title="Rename column">✎</button><button type="button" class="column-delete" aria-label="Delete ${escapeHtml(column.name)}" title="Delete column">×</button></div>` : ''}</header>
       <div class="kanban-card-list">${cards.map((card) => `<article class="kanban-card${card.archived ? ' archived' : ''}" data-card-id="${card.id}" ${canEdit ? 'draggable="true"' : ''} tabindex="0" role="button" aria-label="${escapeHtml(card.title)}">
         ${card.archived ? '<span class="kanban-archived-tag">Archived</span>' : ''}<h3>${escapeHtml(card.title)}</h3>${card.description ? `<p>${escapeHtml(card.description)}</p>` : ''}
         ${card.assignee ? `<span class="kanban-assignee" title="Assignee">${escapeHtml(card.assignee)}</span>` : ''}
@@ -264,12 +268,12 @@ board.addEventListener('click', async (event) => {
   const columnId = Number(columnElement.dataset.columnId);
   const column = data.columns.find((item) => item.id === columnId);
   const cardElement = event.target.closest('[data-card-id]');
-  if (canEdit && event.target.closest('.column-rename')) {
+  if (canManageColumns && event.target.closest('.column-rename')) {
     const name = prompt('Column name', column.name);
     if (name === null || name.trim() === column.name) return;
     try { await api(`/columns/${columnId}`, mutation('PUT', { name })); await reload(); showToast('Column renamed'); }
     catch (error) { boardError.textContent = error.message; }
-  } else if (canEdit && event.target.closest('.column-delete')) {
+  } else if (canManageColumns && event.target.closest('.column-delete')) {
     const count = data.cards.filter((card) => card.columnId === columnId).length;
     if (!confirm(`Delete “${column.name}”${count ? ` and its ${count} card${count === 1 ? '' : 's'}` : ''}?`)) return;
     try { await api(`/columns/${columnId}`, { method: 'DELETE' }); await reload(); showToast('Column deleted'); }
@@ -359,18 +363,31 @@ document.querySelector('#delete-card').addEventListener('click', async () => {
 document.querySelector('#close-card-dialog').addEventListener('click', () => dialog.close());
 document.querySelector('#cancel-card').addEventListener('click', () => dialog.close());
 
-try {
-  const user = await requestJson('/api/auth/me');
-  canEdit = user.role === 'admin';
-  columnForm.hidden = !canEdit;
-  [data, projects] = await Promise.all([api(boardPath()), requestJson('/api/projects')]);
+async function selectTeam(teamId) {
+  selectedTeamId = teamId;
+  canEdit = currentUser.role === 'admin' || currentUser.teamIds.includes(teamId);
+  canManageColumns = currentUser.role === 'admin' || (currentUser.role === 'team_manager' && currentUser.teamIds.includes(teamId));
+  columnForm.hidden = !canManageColumns;
+  [data, projects] = await Promise.all([api(boardPath()), api('/projects')]);
+  selectedProject = 'all'; selectedTag = '';
   render();
+  history.replaceState(null, '', `?teamId=${teamId}`);
+}
+teamBoard.addEventListener('change', () => { void selectTeam(Number(teamBoard.value)).catch((error) => { boardError.textContent = error.message; }); });
+try {
+  currentUser = await requestJson('/api/auth/me');
+  const teams = await requestJson('/api/teams');
+  teamBoard.replaceChildren(...teams.map((team) => new Option(team.name, team.id)));
+  const requested = Number(new URLSearchParams(location.search).get('teamId'));
+  const initial = teams.find((team) => team.id === requested) || teams.find((team) => currentUser.teamIds.includes(team.id)) || teams[0];
+  if (initial) { teamBoard.value = String(initial.id); await selectTeam(initial.id); }
   liveUpdates(['kanban', 'projects'], async (kinds) => {
+    if (!selectedTeamId) return;
     // Column lists scroll on their own; keep each where the viewer left it.
     const scrolls = new Map([...board.querySelectorAll('[data-column-id]')].map((element) => [element.dataset.columnId, element.querySelector('.kanban-card-list')?.scrollTop || 0]));
     const [nextData, nextProjects] = await Promise.all([
       kinds.includes('kanban') || kinds.includes('projects') ? api(boardPath()) : data,
-      kinds.includes('projects') ? requestJson('/api/projects') : projects,
+      kinds.includes('projects') ? api('/projects') : projects,
     ]);
     data = nextData;
     projects = nextProjects;

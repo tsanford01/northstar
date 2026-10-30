@@ -7,8 +7,8 @@ Every endpoint lives under `/api/` and speaks JSON unless noted. Errors are retu
 
 | Kind | How | Who gets it |
 | --- | --- | --- |
-| Session | The `northstar_session` cookie set by login, setup, signup or SSO | Browser users. Role is `admin` or `read_only`. |
-| API token, write scope | `Authorization: Bearer <token>` | A named write token, the token from **Menu → API access**, or `API_TOKEN`. Acts as an admin on token endpoints. |
+| Session | The `northstar_session` cookie set by login, setup, signup or SSO | Browser users. Role is `admin`, `team_manager` or `read_only`; team members are listed under `/api/teams/:id/members`. |
+| API token, write scope | `Authorization: Bearer <token>` | A named write token, the token from **Menu → API access**, or `API_TOKEN`. Acts as an admin on token endpoints, on every team's board. Belongs to no team and cannot manage team members. |
 | API token, read scope | `Authorization: Bearer <token>` | A named read token. `GET` only on token endpoints; sees what a read-only user sees. |
 | Planning-room link | The room token in the URL, plus `leaderKey` for leader actions | Anyone with the link while guest access is on. |
 
@@ -19,6 +19,11 @@ The **Auth** column below uses these values:
 - **admin session**: a signed-in admin. Tokens are not accepted.
 - **token endpoint**: `GET` takes any session or any token; other methods take an admin session or a write token. A read token gets `403` on writes.
 - **write token**: a write-scoped token only (no session).
+
+**Team roles (sessions only).** A `team_manager` manages the teams they belong to: their projects,
+board columns, members, and the team's name and capacity. Any member of a team, including a
+read-only user, can add, edit, move and delete cards on that team's board. Admins can do all of
+this on every team. Tokens are never team members or managers.
 
 ### Failed token limit
 
@@ -139,9 +144,12 @@ The bulk endpoints return `503` when no write token is configured. Add and archi
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/teams` | token endpoint | List teams with their capacity. |
-| `POST` | `/api/teams` | token endpoint | Create a team: `{ "name", "capacity" }`. |
-| `PUT`, `DELETE` | `/api/teams/:id` | token endpoint | Rename, resize or delete a team. |
+| `GET` | `/api/teams` | token endpoint | List teams with their capacity, card and member counts. |
+| `POST` | `/api/teams` | token endpoint (admin) | Create a team: `{ "name", "capacity" }`. |
+| `PUT` | `/api/teams/:id` | token endpoint (admin or the team's manager) | Rename or resize a team. |
+| `DELETE` | `/api/teams/:id` | token endpoint (admin) | Delete a team with no projects or cards. |
+| `GET` | `/api/teams/:id/members` | session | List a team's members. |
+| `POST`, `DELETE` | `/api/teams/:id/members[/:userId]` | admin or the team's manager (session) | Add `{ "userId" }` or remove a member. |
 | `GET` | `/api/capacity` | token endpoint | `{ "total", "occupied", "available" }`. |
 | `PUT` | `/api/capacity` | token endpoint | Set total capacity: `{ "total" }` (not below what is assigned). |
 
@@ -154,6 +162,12 @@ curl http://localhost:3000/api/capacity -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Kanban
+
+Each team has its own board. Pass `?teamId=<id>` to choose it. Without it, the board, report,
+project and column calls use the first team's board, and calls on one card (`/cards/:id`, its notes
+and history) use that card's own team. A card can only link to a project on its team. Creating,
+editing and moving cards needs team membership (or an admin session or write token); columns need
+the team's manager.
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
