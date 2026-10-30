@@ -4,6 +4,7 @@ import {
 import { layoutProjectDots } from './matrix-geometry.js';
 import { liveUpdates } from './live-updates.js';
 import { apiTokenDialogState } from './api-token-dialog.js';
+import { createDismissGroup } from './dismiss.js';
 import {
   emptyTeamBoards,
   findFocusNowOccupant,
@@ -32,6 +33,15 @@ const archiveNoteDialog = $('#archive-note-dialog');
 const archiveNoteForm = $('#archive-note-form');
 const form = $('#project-form');
 const appMenu = $('#app-menu');
+// Every dropdown on the page shares one dismiss behaviour (outside click, Esc, one open at a time).
+const menus = createDismissGroup();
+['#app-menu', '#team-filter', '#views-menu', '#column-menu'].forEach((selector) => menus.details($(selector)));
+const filterMenu = menus.add({
+  isOpen: () => !$('#filter-popover').hidden,
+  close: () => closeFilterPopover(),
+  toggle: () => filterAnchor && $(`[data-filter-open="${filterAnchor}"]`),
+  contains: (node) => $('#filter-popover').contains(node) || Boolean(node.closest?.('[data-filter-open]')),
+});
 const matrixCard = $('#priority-matrix-card');
 const projectPreview = $('#project-preview');
 let previewHideTimer;
@@ -312,9 +322,9 @@ function applyView(view) {
   state.expanded.clear();
   saveTablePrefs();
   renderColumnMenu();
-  renderFilterRow(visibleColumns(state.columns), { force: true });
+  refreshFilterPopover();
   render();
-  $('#views-menu').open = false;
+  menus.closeAll();
   toast(`Showing “${view.name}”`);
 }
 
@@ -341,26 +351,85 @@ function filterChoices(column) {
   return [...new Set([...state.teams.map((team) => team.name), ...state.projects.map((project) => project.team)].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
+// Column filters live in one popover, opened from the filter button in each header.
+const filterPopover = $('#filter-popover');
+let filterAnchor = null;
+
 function filterControl(column) {
   const filter = state.filters[column.id] || {};
   const kind = filterKind(column.type);
-  if (kind === 'contains') return `<input type="search" data-filter="${column.id}" value="${escapeHtml(filter.contains || '')}" placeholder="Contains" aria-label="Filter ${escapeHtml(column.label)}: contains">`;
+  const label = escapeHtml(column.label);
+  const head = `<p class="filter-popover-title" id="filter-popover-title">Filter ${label}</p>`;
+  if (kind === 'contains') return `${head}<label class="filter-field"><span>Contains</span><input type="search" data-filter="${column.id}" value="${escapeHtml(filter.contains || '')}" placeholder="Any text"></label>`;
   if (kind === 'in') {
     const chosen = new Set(filter.in || []);
-    return `<details class="filter-pick"><summary aria-label="Filter ${escapeHtml(column.label)}">${chosen.size ? `${chosen.size} chosen` : 'Any'}</summary><fieldset><legend class="sr-only">${escapeHtml(column.label)}</legend>${filterChoices(column).map((value) => `
-      <label><input type="checkbox" data-filter="${column.id}" value="${escapeHtml(value)}" ${chosen.has(value) ? 'checked' : ''}> ${escapeHtml(value)}</label>`).join('')}</fieldset></details>`;
+    return `${head}<fieldset class="filter-options"><legend class="sr-only">${label}</legend>
+      <div class="filter-bulk"><button type="button" class="text-button" data-filter-all>All</button><button type="button" class="text-button" data-filter-none>None</button></div>
+      ${filterChoices(column).map((value) => `<label class="filter-option"><input type="checkbox" data-filter="${column.id}" value="${escapeHtml(value)}" ${chosen.has(value) ? 'checked' : ''}><span>${escapeHtml(value)}</span></label>`).join('')}
+      <p class="filter-hint">Nothing checked shows every value.</p></fieldset>`;
   }
   const type = column.type === 'date' ? 'date' : 'number';
-  return `<span class="filter-range"><input type="${type}" data-filter="${column.id}" data-bound="min" value="${escapeHtml(filter.min ?? '')}" placeholder="Min" aria-label="Filter ${escapeHtml(column.label)}: at least"><input type="${type}" data-filter="${column.id}" data-bound="max" value="${escapeHtml(filter.max ?? '')}" placeholder="Max" aria-label="Filter ${escapeHtml(column.label)}: at most"></span>`;
+  return `${head}<div class="filter-range"><label class="filter-field"><span>Min</span><input type="${type}" data-filter="${column.id}" data-bound="min" value="${escapeHtml(filter.min ?? '')}"></label><span aria-hidden="true">–</span><label class="filter-field"><span>Max</span><input type="${type}" data-filter="${column.id}" data-bound="max" value="${escapeHtml(filter.max ?? '')}"></label></div>`;
 }
 
-// The filter row is rebuilt only when its shape changes, so typing in it never loses focus.
-let filterRowSignature = '';
-function renderFilterRow(columns, { force = false } = {}) {
-  const signature = JSON.stringify([columns.map((column) => column.id), filterChoices(tableColumn('team'))]);
-  if (signature === filterRowSignature && !force) return;
-  filterRowSignature = signature;
-  $('#project-table-filters').innerHTML = `${columns.map((column) => `<td class="col-${column.id}">${filterControl(column)}</td>`).join('')}<td></td>`;
+function positionFilterPopover() {
+  const button = filterAnchor && $(`[data-filter-open="${filterAnchor}"]`);
+  if (filterPopover.hidden || !button) return;
+  const list = $('.project-list').getBoundingClientRect();
+  const anchor = button.getBoundingClientRect();
+  const width = filterPopover.offsetWidth;
+  filterPopover.style.left = `${Math.max(8, Math.min(anchor.right - list.left - width, list.width - width - 8))}px`;
+  filterPopover.style.top = `${anchor.bottom - list.top + 6}px`;
+}
+
+function openFilterPopover(columnId) {
+  filterAnchor = columnId;
+  filterPopover.innerHTML = `${filterControl(tableColumn(columnId))}<div class="filter-popover-actions"><button type="button" class="text-button" data-filter-clear>Clear</button><button type="button" class="button secondary" data-filter-done>Done</button></div>`;
+  filterPopover.hidden = false;
+  menus.opened(filterMenu);
+  syncFilterToggles();
+  positionFilterPopover();
+  filterPopover.querySelector('input')?.focus();
+}
+
+function closeFilterPopover() {
+  filterPopover.hidden = true;
+  syncFilterToggles();
+}
+
+// Rebuilds the open popover after its filter changes from elsewhere (a view, a cell, a chip).
+function refreshFilterPopover() {
+  if (filterPopover.hidden || !filterAnchor) return;
+  if (!state.columns.includes(filterAnchor)) { closeFilterPopover(); return; }
+  openFilterPopover(filterAnchor);
+}
+
+function syncFilterToggles() {
+  document.querySelectorAll('[data-filter-open]').forEach((button) => {
+    button.setAttribute('aria-expanded', String(!filterPopover.hidden && button.dataset.filterOpen === filterAnchor));
+  });
+}
+
+function filterSummary(column, filter) {
+  if (filter.contains !== undefined) return `${column.label} contains “${filter.contains}”`;
+  if (filter.in) return `${column.label}: ${filter.in.join(', ')}`;
+  if (filter.min !== undefined && filter.max !== undefined) return filter.min === filter.max ? `${column.label} = ${filter.min}` : `${column.label} ${filter.min}–${filter.max}`;
+  return filter.min !== undefined ? `${column.label} ≥ ${filter.min}` : `${column.label} ≤ ${filter.max}`;
+}
+
+function renderFilterChips(active) {
+  const entries = Object.entries(active);
+  $('#filter-chips').hidden = !entries.length;
+  $('#filter-chip-list').innerHTML = entries.map(([columnId, filter]) => {
+    const text = filterSummary(tableColumn(columnId), filter);
+    return `<li><button type="button" class="filter-chip" data-clear-filter="${columnId}" aria-label="Remove filter: ${escapeHtml(text)}" title="${escapeHtml(text)}"><span>${escapeHtml(text)}</span><span aria-hidden="true">×</span></button></li>`;
+  }).join('');
+}
+
+function setColumnFilter(columnId, filter) {
+  state.filters = normalizeFilters({ ...state.filters, [columnId]: filter });
+  saveTablePrefs();
+  render();
 }
 
 function renderCards(project) {
@@ -400,16 +469,18 @@ function renderProjectList(projects, boards = []) {
   $('#project-list-title').textContent = !state.selectedTeams.length ? 'All projects' : `${state.selectedTeams.join(', ')} projects`;
   const columns = visibleColumns(state.columns);
   const shown = sortProjects(applyFilters(projects, state.filters), state.sort);
-  const filtered = Object.keys(normalizeFilters(state.filters)).length;
+  const activeFilters = normalizeFilters(state.filters);
+  const filtered = Object.keys(activeFilters).length;
   $('#list-count').textContent = `${shown.length} ${shown.length === 1 ? 'project' : 'projects'}${filtered ? ` of ${projects.length}` : ''}`;
-  $('#clear-filters').hidden = !filtered;
+  renderFilterChips(activeFilters);
   $('#project-table-head').innerHTML = `${columns.map((column) => {
     const order = state.sort.findIndex((sort) => sort.column === column.id);
     const sort = ariaSort(state.sort, column.id);
     const mark = sort === 'none' ? '' : `<span class="sort-mark" aria-hidden="true">${sort === 'ascending' ? '▲' : '▼'}${state.sort.length > 1 ? `<sub>${order + 1}</sub>` : ''}</span>`;
-    return `<th scope="col" class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}" aria-sort="${sort}"><button type="button" data-sort-column="${column.id}">${escapeHtml(column.label)}${mark}</button></th>`;
+    const active = Boolean(activeFilters[column.id]);
+    const open = !filterPopover.hidden && filterAnchor === column.id;
+    return `<th scope="col" class="col-${column.id} ${column.type === 'number' ? 'numeric' : ''}" aria-sort="${sort}"><div class="th-inner"><button type="button" data-sort-column="${column.id}">${escapeHtml(column.label)}${mark}</button><button type="button" class="filter-toggle${active ? ' active' : ''}" data-filter-open="${column.id}" aria-haspopup="dialog" aria-controls="filter-popover" aria-expanded="${open}" aria-label="Filter ${escapeHtml(column.label)}${active ? ' (filtered)' : ''}" title="Filter ${escapeHtml(column.label)}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25V8.5z"></path></svg></button></div></th>`;
   }).join('')}<th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>`;
-  renderFilterRow(columns);
   $('#project-table-body').innerHTML = shown.map((project) => {
     const expanded = state.expanded.has(project.id);
     return `
@@ -420,6 +491,7 @@ function renderProjectList(projects, boards = []) {
   }).join('');
   $('#project-table').hidden = !shown.length && !filtered;
   $('#project-table-empty').hidden = shown.length > 0;
+  positionFilterPopover();
   if (boards.length) $('#project-table-empty').innerHTML = boardNotice(boards);
   else $('#project-table-empty').textContent = 'No projects match this view.';
 }
@@ -879,17 +951,7 @@ $('#open-planning').addEventListener('click', () => {
   appMenu.open = false;
   openPlanningSetup();
 });
-appMenu.addEventListener('toggle', () => {
-  appMenu.querySelector('summary').setAttribute('aria-expanded', String(appMenu.open));
-});
-document.addEventListener('click', (event) => {
-  if (appMenu.open && !appMenu.contains(event.target)) appMenu.open = false;
-});
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && appMenu.open) {
-    appMenu.open = false;
-    appMenu.querySelector('summary').focus();
-  }
   if (event.key === 'Escape' && matrixCard.classList.contains('presenting')) {
     setMatrixPresentation(false);
     $('#toggle-matrix-presentation').focus();
@@ -947,6 +1009,12 @@ document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click',
   render();
 }));
 $('#project-table-head').addEventListener('click', (event) => {
+  const toggle = event.target.closest('[data-filter-open]');
+  if (toggle) {
+    if (!filterPopover.hidden && filterAnchor === toggle.dataset.filterOpen) closeFilterPopover();
+    else openFilterPopover(toggle.dataset.filterOpen);
+    return;
+  }
   const button = event.target.closest('[data-sort-column]');
   if (!button) return;
   state.sort = toggleSort(state.sort, button.dataset.sortColumn, { add: event.shiftKey });
@@ -964,7 +1032,7 @@ $('#project-table-body').addEventListener('click', (event) => {
     if (!filter) return;
     state.filters = { ...state.filters, [cell.dataset.drill]: filter };
     saveTablePrefs();
-    renderFilterRow(visibleColumns(state.columns), { force: true });
+    refreshFilterPopover();
     render();
     return;
   }
@@ -977,21 +1045,47 @@ $('#project-table-body').addEventListener('keydown', (event) => {
   }
 });
 function readFilter(columnId) {
-  const inputs = [...$('#project-table-filters').querySelectorAll(`[data-filter="${columnId}"]`)];
+  const inputs = [...filterPopover.querySelectorAll(`[data-filter="${columnId}"]`)];
   const kind = filterKind(tableColumn(columnId).type);
   if (kind === 'contains') return { contains: inputs[0]?.value || '' };
   if (kind === 'in') return { in: inputs.filter((input) => input.checked).map((input) => input.value) };
   return Object.fromEntries(inputs.map((input) => [input.dataset.bound, input.value]));
 }
 let filterTimer;
-$('#project-table-filters').addEventListener('input', (event) => {
+filterPopover.addEventListener('input', (event) => {
   const columnId = event.target.dataset.filter;
   if (!columnId) return;
   state.filters = normalizeFilters({ ...state.filters, [columnId]: readFilter(columnId) });
-  const summary = event.target.closest('details')?.querySelector('summary');
-  if (summary) summary.textContent = state.filters[columnId]?.in?.length ? `${state.filters[columnId].in.length} chosen` : 'Any';
   clearTimeout(filterTimer);
   filterTimer = setTimeout(() => { saveTablePrefs(); render(); }, 120);
+});
+filterPopover.addEventListener('click', (event) => {
+  const columnId = filterAnchor;
+  if (event.target.closest('[data-filter-all],[data-filter-none]')) {
+    const all = Boolean(event.target.closest('[data-filter-all]'));
+    filterPopover.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = all; });
+    setColumnFilter(columnId, readFilter(columnId));
+  } else if (event.target.closest('[data-filter-clear]')) {
+    setColumnFilter(columnId, {});
+    refreshFilterPopover();
+  } else if (event.target.closest('[data-filter-done]')) {
+    closeFilterPopover();
+    $(`[data-filter-open="${columnId}"]`)?.focus();
+  }
+});
+// Enter in a text or number box applies and closes, like Done.
+filterPopover.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || !event.target.matches('input:not([type="checkbox"])')) return;
+  event.preventDefault();
+  closeFilterPopover();
+  $(`[data-filter-open="${filterAnchor}"]`)?.focus();
+});
+$('#filter-chip-list').addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-clear-filter]');
+  if (!chip) return;
+  setColumnFilter(chip.dataset.clearFilter, {});
+  refreshFilterPopover();
+  ($('#filter-chip-list [data-clear-filter]') || $('#search'))?.focus();
 });
 $('#views-list').addEventListener('click', async (event) => {
   const apply = event.target.closest('[data-apply-view]');
@@ -1015,7 +1109,7 @@ $('#views-save').addEventListener('submit', async (event) => {
 $('#clear-filters').addEventListener('click', () => {
   state.filters = {};
   saveTablePrefs();
-  renderFilterRow(visibleColumns(state.columns), { force: true });
+  refreshFilterPopover();
   render();
 });
 $('#column-menu-panel').addEventListener('change', (event) => {
@@ -1023,6 +1117,7 @@ $('#column-menu-panel').addEventListener('change', (event) => {
   if (!picked.length) { event.target.checked = true; return; }
   state.columns = picked;
   saveTablePrefs();
+  refreshFilterPopover();
   render();
 });
 $('#column-menu-panel').addEventListener('click', (event) => {
