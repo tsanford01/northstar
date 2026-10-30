@@ -8,6 +8,7 @@ import { createTeamService } from './team-service.mjs';
 import { createSsoService } from './sso-service.mjs';
 import { createSsoSettings } from './sso-settings.mjs';
 import { createKanbanService, KanbanError } from './kanban-service.mjs';
+import { ALL_BOARDS } from './public/shared/kanban-boards.js';
 import { createViewsService, ViewError } from './views-service.mjs';
 import { ActivityError, createActivityService } from './activity-service.mjs';
 import { createEventsService } from './events-service.mjs';
@@ -186,6 +187,8 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
       }
       // Kanban boards belong to teams. A request names its board with ?teamId; without it, list and
       // column calls use the first team's board, and card calls use the card's own team.
+      // ?teamId=all reads every board at once; card calls then use each card's own team.
+      const allBoards = url.searchParams.get('teamId') === ALL_BOARDS;
       const requestedTeamId = Number(url.searchParams.get('teamId')) || null;
       const boardTeamId = requestedTeamId || db.prepare('SELECT id FROM teams ORDER BY id LIMIT 1').get()?.id;
       if (kanbanPath && !db.prepare('SELECT 1 FROM teams WHERE id = ?').get(boardTeamId)) throw new KanbanError(404, 'Team board not found.');
@@ -215,7 +218,12 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
         return json(res, 200, activity.list(query, { includeHidden: user.role === 'admin' })), true;
       }
       if (url.pathname === '/api/kanban') {
-        if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: canSeeHiddenOn(boardTeamId), teamId: boardTeamId, archived: url.searchParams.get('archived') ?? undefined })), true;
+        const archived = url.searchParams.get('archived') ?? undefined;
+        if (req.method === 'GET' && allBoards) {
+          const visibleTeams = teams.list({ includeHidden: user.role === 'admin' }).map(({ id, name }) => ({ id, name, includeHidden: canSeeHiddenOn(id) }));
+          return json(res, 200, kanban.listAll({ teams: visibleTeams, archived })), true;
+        }
+        if (req.method === 'GET') return json(res, 200, kanban.list({ includeHidden: canSeeHiddenOn(boardTeamId), teamId: boardTeamId, archived })), true;
         return json(res, 405, { error: 'Method not allowed.' }), true;
       }
       if (url.pathname === '/api/kanban/report') {
@@ -223,7 +231,13 @@ export function createApi(db, { apiToken = process.env.API_TOKEN, tokenFailuresP
         return json(res, 405, { error: 'Method not allowed.' }), true;
       }
       if (url.pathname === '/api/kanban/projects') {
-        if (req.method === 'GET') { const teamName = db.prepare('SELECT name FROM teams WHERE id = ?').get(boardTeamId).name; return json(res, 200, projects.list({ includeHidden: user.role === 'admin' || canManageTeam(user, boardTeamId) }).filter((p) => p.team.toLocaleLowerCase() === teamName.toLocaleLowerCase()).map(({ id, projectId, name, status, archived }) => ({ id, projectId, name, status, archived }))), true; }
+        if (req.method === 'GET' && allBoards) {
+          const names = new Map(teams.list().map((team) => [team.name.toLocaleLowerCase(), team.id]));
+          return json(res, 200, projects.list({ includeHidden: true })
+            .filter((p) => names.has(p.team.toLocaleLowerCase()) && (!p.hiddenFromReadOnly || canSeeHiddenOn(names.get(p.team.toLocaleLowerCase()))))
+            .map(({ id, projectId, name, status, archived, team }) => ({ id, projectId, name, status, archived, team }))), true;
+        }
+        if (req.method === 'GET') { const teamName = db.prepare('SELECT name FROM teams WHERE id = ?').get(boardTeamId).name; return json(res, 200, projects.list({ includeHidden: user.role === 'admin' || canManageTeam(user, boardTeamId) }).filter((p) => p.team.toLocaleLowerCase() === teamName.toLocaleLowerCase()).map(({ id, projectId, name, status, archived, team }) => ({ id, projectId, name, status, archived, team }))), true; }
         return json(res, 405, { error: 'Method not allowed.' }), true;
       }
       const columnMatch = url.pathname.match(/^\/api\/kanban\/columns(?:\/(\d+))?$/);

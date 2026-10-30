@@ -47,9 +47,9 @@ export const tools = [
   },
   {
     name: 'get_board',
-    description: "A team's kanban board: its columns and cards. Without teamId, the first team's board.",
-    inputSchema: object({ teamId: id, archived: { type: 'string', enum: ['include', 'only'] } }),
-    run: (api, query) => api.request('GET', '/api/kanban', { query }),
+    description: "A team's kanban board: its columns and cards. Without teamId, the first team's board. team \"all\" returns every board at once: columns merged by name, each card with its teamId and teamName.",
+    inputSchema: object({ teamId: id, team: { type: 'string', enum: ['all'] }, archived: { type: 'string', enum: ['include', 'only'] } }),
+    run: (api, { team, ...query }) => api.request('GET', '/api/kanban', { query: team === 'all' ? { ...query, teamId: 'all' } : query }),
   },
   {
     name: 'get_activity',
