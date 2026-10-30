@@ -31,8 +31,8 @@ test('teams report the unarchived cards on their board', () => {
   try {
     const teams = createTeamService(db);
     const platform = teams.list()[0];
-    const columnId = db.prepare('SELECT id FROM kanban_columns WHERE team_id = ? ORDER BY position LIMIT 1').get(platform.id).id;
     const kanban = createKanbanService(db);
+    const columnId = kanban.createColumn({ name: 'To do', teamId: platform.id }).id;
     kanban.createCard({ columnId, title: 'Open card' });
     kanban.createCard({ columnId, title: 'Old card', archived: true });
     const listed = teams.list().find((team) => team.id === platform.id);
