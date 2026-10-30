@@ -169,6 +169,11 @@ and history) use that card's own team. A card can only link to a project on its 
 editing and moving cards needs team membership (or an admin session or write token); columns need
 the team's manager.
 
+`PUT /api/kanban/cards/upsert` and `POST /api/kanban/cards` take the board from the card's
+`columnId`, so the column must come from the board of the team the card belongs to (read it
+from `GET /api/kanban?teamId=<id>`). Creating a column without
+`?teamId` puts it on the first team's board. A column from another board is refused with `404`.
+
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/api/kanban` | token endpoint | Columns and cards, with tags and project links. Archived cards only with `?archived=include` or `?archived=only`. |
