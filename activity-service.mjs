@@ -96,7 +96,24 @@ export function createActivityService(db) {
         projectId: row.projectRef ?? null, body: row.body,
       }));
 
-      const items = [...projects, ...moves, ...decisions, ...cardMoves, ...notes]
+      const changes = select(`
+        SELECT ch.id, ch.project_id AS projectRef, p.project_id AS projectCode, p.name AS projectName,
+          ch.field, ch.from_value AS fromValue, ch.to_value AS toValue, ch.note, ch.actor, ch.changed_at AS at
+        FROM project_changes ch JOIN projects p ON p.id = ch.project_id
+        WHERE 1 = 1 ${after('ch.changed_at', sinceSql)} ${visible}
+        ORDER BY ch.changed_at DESC, ch.id DESC LIMIT ?
+      `, sinceSql).map((row) => {
+        const type = row.field === 'archived' ? (row.toValue === '1' ? 'project.archived' : 'project.restored') : `project.${row.field}`;
+        const values = row.field === 'capacity' ? { from: Number(row.fromValue), to: Number(row.toValue) }
+          : row.field === 'archived' ? {} : { from: row.fromValue, to: row.toValue };
+        return {
+          id: `${type}:${row.id}`, type, at: isoTimestamp(row.at),
+          projectId: row.projectRef, projectCode: row.projectCode, projectName: row.projectName,
+          ...values, note: row.note, actor: row.actor,
+        };
+      });
+
+      const items = [...projects, ...moves, ...decisions, ...cardMoves, ...notes, ...changes]
         .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : b.id.localeCompare(a.id)))
         .slice(0, count);
       return { items };

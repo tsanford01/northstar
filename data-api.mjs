@@ -114,14 +114,15 @@ export function createDataApi(db, projects, { apiToken = process.env.API_TOKEN }
       const settings = apiTokenSettings();
       const writeTokens = db.prepare("SELECT COUNT(*) AS count FROM api_tokens WHERE scope = 'write' AND revoked_at IS NULL").get().count;
       if (!settings.hash && !apiToken && !writeTokens) return json(res, 503, { error: 'Bulk API token is not configured.' }), true;
-      if (!isApiTokenAuthorized(db, req, { apiToken })) return unauthorized(res), true;
+      const access = apiTokenAccess(db, req, { apiToken });
+      if (access?.scope !== 'write') return unauthorized(res), true;
       const input = await readJson(req);
       if (bulkMatch[1] === 'add') {
         const created = projects.bulkCreate(input.projects);
         return json(res, 201, { count: created.length, projects: created }), true;
       }
       if (bulkMatch[1] === 'archive') {
-        const archived = projects.bulkArchive(input.projectIds);
+        const archived = projects.bulkArchive(input.projectIds, { actor: access.name });
         return json(res, 200, { count: archived.length, projects: archived }), true;
       }
       const projectIds = projects.bulkDelete(input.projectIds);
