@@ -330,6 +330,13 @@ stream is unavailable, pages poll `GET /api/version` every 10 seconds while the 
 The event emitter is in-process. Several Northstar servers sharing one PostgreSQL database would
 need PostgreSQL `LISTEN`/`NOTIFY` to share events.
 
+## MCP server for agents
+
+`mcp/` holds a stdio [MCP](https://modelcontextprotocol.io) server, packaged separately, that wraps
+this API for agents: reading projects, cards, teams and activity, and (with a write token) upserting
+projects and cards, moving projects, adding notes, deciding cards and setting team capacity. See
+[`mcp/README.md`](mcp/README.md).
+
 ## Code structure
 
 - `server.mjs` owns process startup, shutdown, and static files.
