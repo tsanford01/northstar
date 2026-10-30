@@ -212,12 +212,12 @@ export function createProjectService(db) {
       return Boolean(db.prepare('SELECT hidden_from_read_only AS hidden FROM projects WHERE id = ?').get(id)?.hidden);
     },
 
-    statusExportRows() {
+    statusExportRows({ includeHidden = true } = {}) {
       return db.prepare(`
         SELECT project_id AS projectId, name, team, status, blocked_note AS blockedNote, capacity, impact, urgency,
           confidence, effort, external_url AS externalUrl, description, updated_at AS updatedAt
         FROM projects
-        WHERE archived = 0 AND status IN ('Active', 'Blocked')
+        WHERE archived = 0 AND status IN ('Active', 'Blocked') ${includeHidden ? '' : 'AND hidden_from_read_only = 0'}
         ORDER BY CASE status WHEN 'Active' THEN 0 ELSE 1 END, team, name
       `).all();
     },

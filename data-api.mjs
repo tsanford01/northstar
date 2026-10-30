@@ -51,6 +51,19 @@ function unauthorized(res) {
 export function createDataApi(db, projects, { apiToken = process.env.API_TOKEN } = {}) {
   const backups = createBackupService(db);
 
+  // Exports take an admin session or an API token on GET. A read token sees what the read-only role sees and
+  // cannot download backups, which hold hidden projects and planning-room keys. Restore stays session-only.
+  function exportAccess(req, res, user, { write = false } = {}) {
+    if (user?.role === 'admin') return { includeHidden: true };
+    const token = req.method === 'GET' ? apiTokenAccess(db, req, { apiToken }) : null;
+    if (token?.scope === 'write') return { includeHidden: true };
+    if (token && !write) return { includeHidden: false };
+    if (token) return json(res, 403, { error: 'This API token is read-only.' }), null;
+    if (!user) res.setHeader('www-authenticate', 'Bearer realm="Northstar export API"');
+    json(res, user ? 403 : 401, { error: user ? 'Admin access is required.' : 'Authentication is required.' });
+    return null;
+  }
+
   function apiTokenSettings() {
     return db.prepare('SELECT api_token_hash AS hash, api_token_created_at AS createdAt FROM portfolio_settings WHERE id = 1').get();
   }
@@ -129,9 +142,10 @@ export function createDataApi(db, projects, { apiToken = process.env.API_TOKEN }
     }
 
     if (url.pathname === '/api/status-export') {
-      if (user?.role !== 'admin') return json(res, user ? 403 : 401, { error: user ? 'Admin access is required.' : 'Authentication is required.' }), true;
+      const access = exportAccess(req, res, user);
+      if (!access) return true;
       if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed.' }), true;
-      const exportProjects = projects.statusExportRows();
+      const exportProjects = projects.statusExportRows(access);
       const headings = ['Project ID', 'Project', 'Team', 'Status', 'Blocked Note', 'People Assigned', 'Impact', 'Urgency', 'Confidence', 'Effort', 'Source Link', 'Context', 'Updated At'];
       const fields = ['projectId', 'name', 'team', 'status', 'blockedNote', 'capacity', 'impact', 'urgency', 'confidence', 'effort', 'externalUrl', 'description', 'updatedAt'];
       const csv = [headings, ...exportProjects.map((project) => fields.map((field) => project[field]))]
@@ -148,7 +162,7 @@ export function createDataApi(db, projects, { apiToken = process.env.API_TOKEN }
     }
 
     if (url.pathname === '/api/backup') {
-      if (user?.role !== 'admin') return json(res, user ? 403 : 401, { error: user ? 'Admin access is required.' : 'Authentication is required.' }), true;
+      if (!exportAccess(req, res, user, { write: true })) return true;
       if (req.method === 'GET') {
         const filename = `northstar-backup-${new Date().toISOString().slice(0, 10)}.json`;
         res.writeHead(200, {
