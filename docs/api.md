@@ -180,7 +180,7 @@ from `GET /api/kanban?teamId=<id>`). Creating a column without
 | `GET` | `/api/kanban/projects` | token endpoint | Project ids and names for card links. |
 | `GET` | `/api/kanban/report` | token endpoint | Every card's column history and durations. |
 | `POST` | `/api/kanban/columns` | token endpoint | Create a column: `{ "name" }`. |
-| `PUT`, `DELETE` | `/api/kanban/columns/:id` | token endpoint | Rename or delete a column (and its cards). |
+| `PUT`, `DELETE` | `/api/kanban/columns/:id` | token endpoint | Rename (`name`) or reorder (`position`, 0-based on that team's board; the others shift so positions stay 0..n-1) a column, or delete it (and its cards). |
 | `GET` | `/api/kanban/cards` | token endpoint | Find cards by `?key=`, `?externalUrl=`, `?projectId=`, `?decision=open`, `?tag=` or `?source=`; add `?archived=include` or `?archived=only` for archived cards. |
 | `POST` | `/api/kanban/cards` | token endpoint | Create a card: `columnId` and `title` required. |
 | `GET`, `PUT`, `DELETE` | `/api/kanban/cards/:id` | token endpoint | Read, partially update (including `columnId` to move and `archived: true/false` to archive or restore) or delete a card. |
