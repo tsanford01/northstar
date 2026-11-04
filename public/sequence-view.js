@@ -79,7 +79,7 @@ export function row(doc, item, { objectives, now = new Date() }) {
       item.owner ? el(doc, 'strong', { class: 'seq-owner' }, item.mine ? 'You' : item.owner) : null,
       el(doc, 'span', { class: 'seq-step' }, item.now)),
     el(doc, 'span', { class: 'seq-then' }, hasThen ? el(doc, 'span', { class: 'seq-patch' }, ...chain(doc, item.then)) : null),
-    el(doc, 'span', { class: 'seq-reaches' }, item.reaches ? el(doc, 'span', { class: 'seq-patch' }, item.reachesOutcome ? target(doc) : mark(doc, objectives, item.objective), el(doc, 'span', {}, item.reaches)) : null));
+    el(doc, 'span', { class: 'seq-reaches' }, item.reaches ? el(doc, 'span', { class: 'seq-patch' }, target(doc), el(doc, 'span', {}, item.reaches)) : null));
 }
 
 // The people holding the queue: a bar per step, the viewer first in the accent colour.

@@ -5,7 +5,7 @@ One list, in order, of what happens next across every board. A scan answers:
 | Where the eye goes | The reader asks | The page answers with |
 | --- | --- | --- |
 | Down the Now column | What happens today, and who does it? | One boxed step per row, its owner in bold. The reader's own steps use the page's one accent colour. |
-| Across a row | Why here, and what does it unlock? | Left: place, objective mark and a one-line reason (the full reason on hover). Middle: the cards it unblocks, in light text. Right: what the chain reaches (a target mark for an outcome, else the objective). |
+| Across a row | Why here, and what does it unlock? | Left: place, objective mark and a one-line reason (the full reason on hover). Middle: the cards it unblocks, in light text. Right: the outcome the chain reaches, with a target mark (empty when the card has none). |
 | Dimmed rows | What is waiting on the clock, not a person? | Rows with a `waitUntil` still ahead: dimmed, with a dashed Now box. |
 | Top right | Who holds the queue? | A bar per step for each person. **Mine** keeps only the reader's steps. The time of the last pass, with its scores on hover. |
 | Small marks | What moved since the last pass? | ↑n or ↓n under the reason; the reason on hover. |
@@ -17,11 +17,12 @@ One list, in order, of what happens next across every board. A scan answers:
   or its title when it has none. It links to the card on the board (`/kanban.html?card=<id>`).
 - **Then** is the chain of cards it unblocks: the cards whose `blockedBy` names it, then the
   cards those unblock, up to three levels. Each part links to its card.
-- **Reaches** is the card's `outcome`, else its objective.
+- **Reaches** is the card's `outcome`, with a target mark. A card without one leaves it empty: the
+  objective already shows as the mark beside the reason.
 - Only ranked, open cards appear. Archived cards and cards in a column named Done drop out; the
   next pass re-ranks.
 - Rows are a fixed 72 px tall on wide screens, so the brackets line up. A thin line runs from the
-  Now box through Then to Reaches, under the text, when the row has either.
+  Now box through Then to Reaches, under the text, when the row has a Then or an outcome.
 
 ## Brackets
 
@@ -44,7 +45,8 @@ as a move.
 ## Empty and narrow
 
 - Before the first pass: "No order yet. It appears after the first pass."
-- On a phone each row stacks Now, then the reason, then Then and Reaches; Mine stays on top.
+- On a phone each row stacks one line of place, mark, reason and move, then the Now box, then
+  Then, then Reaches; Mine stays on top.
 
 ## Live updates
 

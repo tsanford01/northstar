@@ -93,7 +93,7 @@
 .seq-foot-end { display:flex; flex-wrap:wrap; align-items:center; gap:18px; }
 .seq .seq-design { color:var(--muted); font-size:12px; text-decoration:underline; text-decoration-color:var(--seq-row-line); text-underline-offset:3px; }
 
-/* Phone: each row stacks Now, then the reason, then Then and Reaches; Mine stays on top. */
+/* Phone: each row stacks place, mark, reason and move on one line, then Now, Then and Reaches; Mine stays on top. */
 @media (max-width:760px) {
   .seq { margin-top:20px; gap:16px; }
   .seq-head { flex-direction:column; align-items:stretch; }
@@ -102,11 +102,14 @@
   .seq-columns { display:none; }
   .seq-row { height:auto; grid-template-columns:minmax(0,1fr); gap:8px; padding:12px; }
   .seq-row.has-line::before { display:none; }
-  .seq-now { order:1; }
-  .seq-why { order:2; gap:10px; }
+  .seq-why { order:1; gap:10px; }
+  .seq-why-text { flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+  .seq-move { padding-left:0; }
+  .seq-now { order:2; }
   .seq-place { width:auto; font-size:15px; }
   .seq-then { order:3; white-space:normal; }
   .seq-reaches { order:4; }
+  .seq-then:empty,.seq-reaches:empty { display:none; }
   .seq-patch { padding:0; }
   .seq-step { white-space:normal; }
 }

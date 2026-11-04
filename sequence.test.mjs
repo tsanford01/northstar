@@ -30,8 +30,8 @@ test('the sequence lists ranked, open cards in order, with who, why, what they u
   const view = buildSequence({ cards, viewer: 'Sam', now, latest: run(2, [[2, 1], [1, 2], [3, 3], [9, null]]), previous: null });
   assert.deepEqual(view.rows.map((item) => [item.place, item.id]), [[1, 2], [2, 1], [3, 3], [4, 8]], 'Done and archived cards drop out');
   const [first, second, third, fourth] = view.rows;
-  assert.deepEqual([first.now, first.owner, first.mine, first.reaches, first.reachesOutcome], ['Ship the importer', 'Alex', false, 'Imports run nightly', true]);
-  assert.deepEqual([second.now, second.mine, second.rankReason, second.reasonFull, second.reaches, second.reachesOutcome], ['Approve the schema', true, 'One approval left', 'The schema change needs one approval.', 'Faster search', false]);
+  assert.deepEqual([first.now, first.owner, first.mine, first.reaches], ['Ship the importer', 'Alex', false, 'Imports run nightly']);
+  assert.deepEqual([second.now, second.mine, second.rankReason, second.reasonFull, second.reaches], ['Approve the schema', true, 'One approval left', 'The schema change needs one approval.', ''], 'no outcome: Reaches stays empty, never the objective');
   assert.deepEqual(second.then, [[{ id: 3, title: 'Card 3' }], [{ id: 4, title: 'Card 4' }], [{ id: 5, title: 'Deep follow-up' }]]);
   assert.equal(third.waiting, true);
   assert.equal(buildSequence({ cards, now: new Date('2030-01-04T00:00:00Z') }).rows[2].waiting, false, 'a past wait time no longer dims the row');
@@ -59,7 +59,9 @@ test('row and footer render without innerHTML; the design link is https only and
   const doc = fakeDocument();
   const view = buildSequence({ cards: [card(1, { rank: 1, assignee: 'sam', objective: 'Goal', rankReason: 'Why', blockedBy: [] }), card(2, { blockedBy: [1] })], viewer: 'sam', latest: run(1, [[1, 1], [2, null]]) });
   const node = row(doc, view.rows[0], { objectives: view.objectives });
-  assert.equal(node.attributes.class, 'seq-row is-mine has-line');
+  assert.equal(node.attributes.class, 'seq-row is-mine has-line no-reach', 'a Then without an outcome still draws the line');
+  const bare = buildSequence({ cards: [card(3, { rank: 1, objective: 'Goal' })], latest: run(1, [[3, 1]]) });
+  assert.equal(row(doc, bare.rows[0], { objectives: bare.objectives }).attributes.class, 'seq-row no-reach', 'no Then and no outcome: no line');
   const links = all(node, 'a');
   assert.deepEqual(links.map((link) => link.attributes.href), ['/kanban.html?card=1', '/kanban.html?card=2']);
   assert.equal(text(all(node, 'strong')[0]), 'You');

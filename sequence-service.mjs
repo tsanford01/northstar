@@ -93,8 +93,8 @@ export function buildSequence({ cards, latest = null, previous = null, viewer = 
         objective: card.objective || '', rankReason: card.rankReason || reasons.get(card.id) || '', reasonFull: card.reasonFull || '',
         waitUntil: card.waitUntil ?? null, waiting: Boolean(card.waitUntil) && new Date(card.waitUntil) > now,
         then: chainFrom(card, unblocks, byId),
-        reaches: card.outcome || card.objective || '',
-        reachesOutcome: Boolean(card.outcome),
+        // Only a real outcome is a destination; the objective already shows as the reason's mark.
+        reaches: card.outcome || '',
         moved: move ? { places: Math.abs(move), direction: move > 0 ? 'up' : 'down' } : null,
       };
     });
