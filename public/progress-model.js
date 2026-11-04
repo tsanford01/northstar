@@ -57,11 +57,10 @@ export function summarize(def, series) {
   };
 }
 
-// The chip under a tile's number: "+3", "−2", "0". The words go in its accessible name.
+// The chip under a tile's number: "+3" or "−2"; nothing when there is no change. The words go in its accessible name.
 export function signedChange(summary) {
   const { change, previous, def } = summary;
-  if (!previous || change === null) return '';
-  if (!change) return '0';
+  if (!previous || !change) return '';
   return `${change > 0 ? '+' : '−'}${formatNumber(Math.abs(change), def.unit === '%' ? '%' : '')}`;
 }
 

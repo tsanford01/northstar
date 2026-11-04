@@ -51,22 +51,27 @@ function renderTiles() {
   state.sparks.clear();
   const from = state.latestDate ? addDays(state.latestDate, -29) : undefined;
   let index = 0;
-  const columns = BANDS.map((band) => {
+  // One grid for every band, so a row of tiles lines up across the bands and every row is as tall
+  // as its tallest tile. Each band is a column; its tiles take rows 1, 2, 3 in position order.
+  const used = BANDS.filter((band) => state.summaries.some((summary) => (summary.def.band || 'momentum') === band.id));
+  const columns = used.map((band, column) => {
     const summaries = state.summaries.filter((summary) => (summary.def.band || 'momentum') === band.id);
-    if (!summaries.length) return null;
-    const column = el(document, 'div', { class: `band band-${band.id}`, role: 'group', 'aria-label': `${band.name}: ${band.hint.toLowerCase()}` });
-    for (const summary of summaries) {
+    const group = el(document, 'div', { class: `band band-${band.id}`, role: 'group', 'aria-label': `${band.name}: ${band.hint.toLowerCase()}` });
+    for (const [row, summary] of summaries.entries()) {
       const series = windowed(summary.series, 30, state.latestDate);
       const node = tile(document, summary, { because: because(summary), series, from, to: state.latestDate, index });
       node.style.setProperty('--i', String(index));
+      node.style.setProperty('--col', String(column + 1));
+      node.style.setProperty('--row', String(row + 1));
       index += 1;
-      column.appendChild(node);
+      group.appendChild(node);
       // The same box the view drew the sparkline with, so the crosshair lands on its points.
       const geometry = chartGeometry(series, { width: 160, height: 40, top: 4, bottom: 3, left: 1, right: 4, from, to: state.latestDate, ticks: 2 });
       state.sparks.set(summary.key, { summary, series, from, geometry });
     }
-    return column;
-  }).filter(Boolean);
+    return group;
+  });
+  bands.style.setProperty('--bands', String(used.length));
   bands.replaceChildren(...columns);
   bands.classList.toggle('reveal', !reducedMotion.matches);
   for (const node of bands.querySelectorAll('.tile')) wireTile(node);
@@ -122,9 +127,14 @@ function renderHeadline() {
 }
 
 function renderNeeds() {
-  const panel = needsPanel(document, state.needs, { admin: state.user?.role === 'admin' });
+  const admin = state.user?.role === 'admin';
+  const panel = needsPanel(document, state.needs, { admin });
   panel.querySelector('.needs-choose')?.addEventListener('click', () => chooseColumn(panel));
   document.getElementById('progress-needs').replaceChildren(panel);
+  // Choosing the column is setup, not reading: it lives behind the header's settings button.
+  const settings = document.getElementById('progress-settings');
+  settings.hidden = !admin;
+  settings.onclick = () => chooseColumn(document.querySelector('#progress-needs .needs'));
 }
 
 async function chooseColumn(panel) {
@@ -183,8 +193,8 @@ function renderFocus() {
     milestones.length ? el(document, 'span', { class: 'legend-flag' }, 'Milestone') : null);
   const plot = el(document, 'div', { class: 'focus-plot' });
   const head = el(document, 'header', { class: 'focus-head' },
-    el(document, 'div', {}, el(document, 'h2', { id: 'focus-title' }, summary.def.question || summary.def.label),
-      summary.def.description ? el(document, 'p', { class: 'focus-description' }, summary.def.description) : null),
+    el(document, 'div', {}, el(document, 'h2', { id: 'focus-title' }, summary.def.label),
+      summary.def.question ? el(document, 'p', { class: 'focus-description' }, summary.def.question) : null),
     rangeButtons);
   const details = el(document, 'details', { class: 'focus-table' }, el(document, 'summary', {}, 'Show the numbers'), el(document, 'div', { class: 'docs-table' }, dataTable(document, summary, series)));
   section.replaceChildren(head, legend, plot, details);

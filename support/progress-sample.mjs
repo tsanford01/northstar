@@ -22,15 +22,15 @@ const random = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2
 const jitter = (size) => Math.round((random() - 0.5) * 2 * size);
 
 const defs = [
-  ['shipped_total', { label: 'Items shipped', direction: 'up_good', band: 'momentum', question: 'How much have we shipped?' }],
-  ['queue_open', { label: 'Open queue', direction: 'down_good', band: 'momentum', question: 'How long is the queue?' }],
-  ['unreleased', { label: 'Unreleased changes', direction: 'down_good', band: 'momentum', question: 'How much is waiting to release?' }],
+  ['shipped_total', { label: 'Shipped', direction: 'up_good', band: 'momentum', question: 'How much have we shipped?' }],
+  ['queue_open', { label: 'Queue', direction: 'down_good', band: 'momentum', question: 'How long is the queue?' }],
+  ['unreleased', { label: 'Waiting to release', direction: 'down_good', band: 'momentum', question: 'How much is waiting to release?' }],
   ['alerts_open', { label: 'Open alerts', direction: 'down_good', band: 'health', question: 'How many alerts are open?' }],
-  ['targets_met', { label: 'Service targets met', unit: '%', direction: 'up_good', band: 'health', question: 'Are we meeting our service targets?' }],
-  ['restore_drill', { label: 'Restore drill', unit: 'minutes', direction: 'down_good', band: 'health', question: 'How long does a restore take?', startsWhen: 'the first restore drill runs' }],
-  ['findings_open', { label: 'Open security findings', direction: 'down_good', band: 'trust', question: 'How many security findings are open?' }],
+  ['targets_met', { label: 'Service targets', unit: '%', direction: 'up_good', band: 'health', question: 'Are we meeting our service targets?' }],
+  ['restore_drill', { label: 'Restore time', unit: 'minutes', direction: 'down_good', band: 'health', question: 'How long does a restore take?', startsWhen: 'the first restore drill runs' }],
+  ['findings_open', { label: 'Security findings', direction: 'down_good', band: 'trust', question: 'How many security findings are open?' }],
   ['mistakes', { label: 'Mistakes that reached people', direction: 'down_good', band: 'trust', question: 'How many mistakes reached people this week?' }],
-  ['review_wait', { label: 'Days waiting for review', unit: 'days', direction: 'down_good', band: 'trust', question: 'How long do changes wait for review?' }],
+  ['review_wait', { label: 'Review wait', unit: 'days', direction: 'down_good', band: 'trust', question: 'How long do changes wait for review?' }],
 ];
 defs.forEach(([key, def], position) => progress.defineMetric(key, { ...def, position }, { actor }));
 

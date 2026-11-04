@@ -137,6 +137,8 @@ test('the page model: direction colors, signed changes, the ask-only headline an
   assert.equal(changeText(rate), 'Down 0.5% since Oct 30');
   assert.equal(changeText(shipped), 'Up 3 since yesterday');
   assert.equal(signedChange(summarize(def('a', 'up_good'), [{ date: '2026-11-03', value: 1 }])), '');
+  const flat = summarize(def('a', 'down_good'), [{ date: '2026-11-02', value: 4 }, { date: '2026-11-03', value: 4 }]);
+  assert.deepEqual([signedChange(flat), changeText(flat)], ['', 'No change since yesterday']);
 
   const because = (summary) => becauseFor(summary, { bullets: [{ text: 'A batch closed the queue gap', metric_key: 'queue_open' }] });
   assert.equal(headline({ summaries: [shipped, queue], latestDate: '2026-11-03', needs: { configured: true, count: 0 } }).text, '');
@@ -190,11 +192,13 @@ test('the page renders tiles, the ask, the needs panel, the chart and reports as
   assert.equal(all(node, (item) => item.tag === 'img').length, 0);
   assert.equal(byClass(node, 'estimated').length, 1);
   assert.equal(node.attributes['aria-label'], 'How much did we merge? 9. Up 4 since yesterday.');
+  assert.equal(byClass(node, 'tile-label')[0].textContent, 'PRs merged');
+  assert.equal(node.attributes.title, 'How much did we merge?');
   assert.equal(all(node, (item) => item.tag === 'linearGradient').length, 1);
 
   const empty = tile(doc, summarize({ key: 'drill', label: 'Drill', question: 'How long does a restore take?', direction: 'down_good', unit: 'minutes', startsWhen: 'the first drill runs' }, []), { series: [] });
   assert.match(empty.attributes.class, /unmeasured/);
-  assert.equal(empty.attributes.title, 'Not measured yet. Starts when the first drill runs.');
+  assert.equal(empty.attributes.title, 'How long does a restore take? Not measured yet. Starts when the first drill runs.');
   assert.equal(byClass(empty, 'tile-number').length, 0);
   assert.equal(byClass(empty, 'spark-empty').length, 1);
 
@@ -203,7 +207,9 @@ test('the page renders tiles, the ask, the needs panel, the chart and reports as
   const panel = needsPanel(doc, { configured: true, count: 4, teamId: 1, columnName: 'Waiting', teamName: 'Ops', items: [{ title: 'Approve <b>it</b>', externalUrl: 'https://tracker.example/1', nextStep: 'Read it' }] });
   assert.equal(all(panel, (item) => item.tag === 'a')[0].attributes.rel, 'noopener noreferrer');
   assert.match(panel.textContent, /Approve <b>it<\/b>/);
-  assert.match(panel.textContent, /See all 4 on the board/);
+  assert.match(panel.textContent, /See all on the board$/);
+  assert.doesNotMatch(panel.textContent, /4/);
+  assert.equal(byClass(panel, 'visually-hidden')[0].textContent, 'Waiting on you');
   assert.match(needsPanel(doc, { configured: false, count: 0 }, { admin: true }).textContent, /Choose a column/);
 
   const { node: chart } = focusChart(doc, summary, { series, milestones: [{ id: 1, date: '2026-11-02', label: 'Pipeline live', metricKey: null }], width: 600, height: 300, from: '2026-11-01', to: '2026-11-03' });

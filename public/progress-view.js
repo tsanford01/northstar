@@ -52,16 +52,17 @@ export function sparkline(doc, summary, { series, from, to, width = 160, height 
 }
 
 // One tile. The number sits in the same place in every tile; the chip under it is the change since
-// the previous reading, tinted by the metric's direction.
+// the previous reading, tinted by the metric's direction. The tile shows a short label; its question
+// is the hover title. A zero change shows no chip.
 export function tile(doc, summary, { because = '', series, from, to, index = 0 } = {}) {
   const { def, latest } = summary;
   const measured = Boolean(latest);
   const node = el(doc, 'button', {
     type: 'button', class: `tile${measured ? '' : ' unmeasured'}`, 'data-key': def.key, 'data-index': index,
     'aria-label': tileName(summary), 'aria-pressed': 'false',
-    title: measured ? undefined : `Not measured yet.${def.startsWhen ? ` Starts when ${def.startsWhen}.` : ''}`,
+    title: [def.question || '', measured ? '' : `Not measured yet.${def.startsWhen ? ` Starts when ${def.startsWhen}.` : ''}`].filter(Boolean).join(' ') || undefined,
   });
-  node.appendChild(el(doc, 'span', { class: 'tile-question' }, def.question || def.label));
+  node.appendChild(el(doc, 'span', { class: 'tile-label' }, def.label));
   const value = el(doc, 'span', { class: 'tile-value' });
   if (measured) {
     value.appendChild(el(doc, 'span', { class: 'tile-number', 'data-value': latest.value, 'data-unit': def.unit }, formatNumber(latest.value)));
@@ -82,16 +83,16 @@ export function headlineNode(doc, model) {
   return el(doc, 'p', { class: 'headline', id: 'headline' }, el(doc, 'span', { class: 'status-dot', 'aria-hidden': 'true' }), model.text);
 }
 
-// "Waiting on you": the count, the first three cards and a link to the column.
+// "Waiting on you": the first three cards and a link to the column. The headline carries the count,
+// so the panel repeats neither; its heading is for screen readers only.
 export function needsPanel(doc, needs, { admin = false } = {}) {
   const panel = el(doc, 'section', { class: `needs${needs.count ? ' has-items' : ''}`, 'aria-labelledby': 'needs-title' });
-  panel.appendChild(el(doc, 'h2', { id: 'needs-title' }, 'Waiting on you'));
+  panel.appendChild(el(doc, 'h2', { id: 'needs-title', class: 'visually-hidden' }, 'Waiting on you'));
   if (!needs.configured) {
     panel.appendChild(el(doc, 'p', { class: 'needs-empty' }, admin ? 'Choose the board column that holds what needs you.' : 'An admin can choose the board column for this list.'));
     if (admin) panel.appendChild(el(doc, 'button', { type: 'button', class: 'button secondary needs-choose' }, 'Choose a column'));
     return panel;
   }
-  panel.appendChild(el(doc, 'p', { class: 'needs-count', title: `Cards in ${needs.columnName} on the ${needs.teamName} board` }, el(doc, 'span', { class: 'needs-number' }, formatNumber(needs.count))));
   if (!needs.count) {
     panel.appendChild(el(doc, 'p', { class: 'needs-empty' }, 'Nothing is waiting on you.'));
   } else {
@@ -105,8 +106,7 @@ export function needsPanel(doc, needs, { admin = false } = {}) {
     }
     panel.appendChild(list);
   }
-  panel.appendChild(el(doc, 'a', { class: 'needs-board', href: `/kanban.html?teamId=${encodeURIComponent(needs.teamId)}` }, needs.count > 3 ? `See all ${formatNumber(needs.count)} on the board` : 'Open the board'));
-  if (admin) panel.appendChild(el(doc, 'button', { type: 'button', class: 'text-button needs-choose' }, 'Change column'));
+  panel.appendChild(el(doc, 'a', { class: 'needs-board', href: `/kanban.html?teamId=${encodeURIComponent(needs.teamId)}`, title: `${needs.columnName} on the ${needs.teamName} board` }, 'See all on the board'));
   return panel;
 }
 
