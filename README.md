@@ -29,6 +29,15 @@ lists the cards in one board column that an admin chooses. To try it with 90 day
 run `node support/progress-sample.mjs data/sample` and start the app with `DATA_DIR=data/sample
 AUTH_DISABLED=true pnpm start`. The design is in [docs/progress-page.md](docs/progress-page.md).
 
+The **Constraints** page in the main menu is a Theory of Constraints register: find the #1
+constraint, exploit it, subordinate everything else to it, elevate it, then repeat with the next.
+Each constraint has a rank (open ones hold 1..n, so there is always one #1), a stage (identify,
+exploit, subordinate, elevate, resolved) with its history, a measure that can name a Progress
+metric to show its 30-day trend, evidence and an owner. Cards link to a constraint with a rating
+(removes, eases, neutral, adds load), shown as a chip on the board; **Order: Constraint first** on
+the board sorts by constraint rank, then rating, then the usual order. Agents keep the register
+through the MCP tools. The design is in [docs/constraints-page.md](docs/constraints-page.md).
+
 Every impact or urgency change is saved with its date, previous position, new position, and source. Open a project and choose **View history** to review its movement timeline. Selecting the Complete filter also enables completed projects on the matrix automatically.
 
 Moves can include an optional comment explaining why the priority changed. Comments can be added during a matrix drag, a project edit, or a planning-room placement and appear in the movement timeline.
@@ -39,7 +48,7 @@ Use the **Teams** configuration page to add teams, rename them, and set a whole-
 
 Northstar prevents project allocations from exceeding their responsible team’s capacity and prevents a team’s capacity from being lowered below its current assignments.
 
-Use **Data** in the header to export a complete JSON backup or restore one later. Backups include projects, capacity, movement history, retrospectives, planning-room data, kanban columns, cards, tags, notes, and column history, and progress metrics, reports and milestones. A separate CSV status export includes only current Active and Blocked projects for concise reporting. Restoring validates the file before atomically replacing the current portfolio, so a failed restore leaves existing data unchanged.
+Use **Data** in the header to export a complete JSON backup or restore one later. Backups include projects, capacity, movement history, retrospectives, planning-room data, kanban columns, cards, tags, notes, and column history, progress metrics, reports and milestones, and the constraint register with its history. A separate CSV status export includes only current Active and Blocked projects for concise reporting. Restoring validates the file before atomically replacing the current portfolio, so a failed restore leaves existing data unchanged.
 
 ## Run with Docker
 
@@ -442,10 +451,14 @@ fields for its type:
 | `project.status` | project fields, `from`, `to`, `note` (the blocked note when `to` is `Blocked`), `actor` |
 | `project.archived`, `project.restored` | project fields, `note` (the archive or restore note), `actor` |
 | `project.team`, `project.capacity` | project fields, `from`, `to`, `actor` |
-| `card.updated` | card fields, `fields` (which of `title`, `description`, `nextStep`, `externalUrl` changed), `actor` |
+| `card.updated` | card fields, `fields` (which of `title`, `description`, `nextStep`, `externalUrl`, `objective`, `blockedBy`, `constraintId`, `constraintRating` changed), `actor` |
 | `card.decided` | card fields, `option` (the decided option), `by` and `actor` (who decided) |
 | `card.assigned` | card fields, `from`, `to` (assignee before and after; `''` is unassigned), `actor` |
 | `card.archived`, `card.restored` | card fields, `actor` |
+| `constraint.created` | `constraintId`, `name`, `stage`, `rank`, `actor` |
+| `constraint.updated` | `constraintId`, `name`, `fields` (which of `name`, `measure`, `metricKey`, `evidence`, `owner` changed), `actor` |
+| `constraint.stage` | `constraintId`, `name`, `from`, `to`, `note`, `actor` |
+| `constraint.ranked` | `constraintId`, `name`, `from`, `to` (rank before and after; `null` is out of the order), `actor` |
 
 Status, archive, team and capacity events for projects, and update, decision, assignee and archive
 events for cards, are recorded from the time this history was added; earlier changes are not
@@ -460,7 +473,7 @@ you already hold. Read-only callers do not see events for projects hidden from r
 The matrix, kanban and teams pages update by themselves when data changes in another tab, from a
 teammate, or through the API. `GET /api/events` is a server-sent event stream (browser session
 or any API token). After each committed write it sends `{ "version": N, "kinds": [...] }`, where
-the kinds are those whose content changed (`projects`, `kanban`, `teams`). Every event has an `id`
+the kinds are those whose content changed (`projects`, `kanban`, `teams`, `sequence`, `constraints`). Every event has an `id`
 for `Last-Event-ID`, and the stream sends a heartbeat every 25 seconds. Read-only viewers are
 compared against what they can see, so a change to a hidden project sends them nothing. A page
 waits to refresh while a dialog is open, a form field has focus or a drag is in progress. If the
