@@ -161,6 +161,11 @@ exports of an unchanged board are identical, so a file kept in git shows only re
 Inputs are checked against the same limits the API enforces before anything is sent. An API error
 comes back as the tool result (`Northstar returned HTTP <status>: <message>`), never as a stack trace.
 
+A call that fails on the network is tried once more only when that can't change the outcome: any call
+whose connection was never made, and a read or keyed upsert that met a keep-alive connection the
+server had already closed. Other writes, such as adding a note, are not sent twice. A timeout is
+never retried.
+
 ## Tests
 
 From the repository root, after installing both packages:

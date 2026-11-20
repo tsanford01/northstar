@@ -137,7 +137,7 @@ export const tools = [
     write: true,
     description: 'Create a project, or update the one whose key (projectId or externalUrl) matches. Repeating a call changes nothing.',
     inputSchema: object({ key: { type: 'string', enum: ['projectId', 'externalUrl'] }, project: { type: 'object' } }, ['key', 'project']),
-    run: (api, { key, project }) => api.request('PUT', '/api/projects/upsert', { query: { key }, body: project }),
+    run: (api, { key, project }) => api.request('PUT', '/api/projects/upsert', { query: { key }, body: project, idempotent: true }),
   },
   {
     name: 'move_project',
@@ -154,7 +154,7 @@ export const tools = [
     description: 'Create a kanban card, or update the one whose key matches: its externalUrl (default) or, with key="key", its own card key. Repeating a call changes nothing. Place it with team (name or id) and column (name), or a raw card.columnId; a new card needs both team and column, and a column the team lacks is an error. An existing card stays on its own team. card.rank (0–1000000, null clears) is its place in a sequence and survives column moves; card.position is not settable (the board assigns it). card.objective is short text (≤300); card.blockedBy is a list of other card ids and replaces the stored list. card.constraintId links the card to a constraint (null unlinks it); card.constraintRating is how the card bears on it: removes, eases, neutral or adds_load (null = not rated).',
     inputSchema: object({ card: { type: 'object' }, key: { type: 'string', enum: ['externalUrl', 'key'] }, team: text(50, 1), column: text(80, 1) }, ['card']),
     async run(api, { card, key, team, column }) {
-      if (team === undefined && column === undefined) return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card });
+      if (team === undefined && column === undefined) return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card, idempotent: true });
       if (card.columnId !== undefined) throw fail(400, 'Give the column by name or card.columnId, not both.');
       const value = card[key === 'key' ? 'key' : 'externalUrl'];
       const [existing] = value ? await api.request('GET', '/api/kanban/cards', { query: { [key === 'key' ? 'key' : 'externalUrl']: value, archived: 'include' } }) : [];
@@ -166,11 +166,11 @@ export const tools = [
       }
       if (column === undefined) {
         if (!existing) throw fail(400, 'Name the column for a new card.');
-        return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card });
+        return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: card, idempotent: true });
       }
       const { columns } = await api.request('GET', '/api/kanban', { query: { teamId: target.id } });
       const columnId = resolveColumn(columns, column, target.name).id;
-      return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: { ...card, columnId } });
+      return api.request('PUT', '/api/kanban/cards/upsert', { query: { key }, body: { ...card, columnId }, idempotent: true });
     },
   },
   {
@@ -262,7 +262,7 @@ export const tools = [
     }),
     run: (api, body) => {
       if (body.id === undefined && body.name === undefined) throw fail(400, 'Name the constraint by id or name.');
-      return api.request('PUT', '/api/constraints/upsert', { body });
+      return api.request('PUT', '/api/constraints/upsert', { body, idempotent: true });
     },
   },
   {
@@ -339,7 +339,7 @@ export const tools = [
       band: { type: 'string', enum: ['momentum', 'health', 'trust'] }, question: text(120), startsWhen: text(120), hidden: { type: 'boolean' },
       position: { type: 'integer', minimum: 0, maximum: 9999 }, description: text(500),
     }, ['key']),
-    run: (api, { key, ...def }) => api.request('PUT', `/api/progress/metric-defs/${encodeURIComponent(key)}`, { body: def }),
+    run: (api, { key, ...def }) => api.request('PUT', `/api/progress/metric-defs/${encodeURIComponent(key)}`, { body: def, idempotent: true }),
   },
   {
     name: 'remove_metric',
@@ -348,7 +348,7 @@ export const tools = [
     inputSchema: object({ key: slug }, ['key']),
     async run(api, { key }) {
       try {
-        return await api.request('DELETE', `/api/progress/metric-defs/${encodeURIComponent(key)}`);
+        return await api.request('DELETE', `/api/progress/metric-defs/${encodeURIComponent(key)}`, { idempotent: true });
       } catch (error) {
         if (error.status === 404) return { removed: false, key };
         throw error;
@@ -372,7 +372,7 @@ export const tools = [
     write: true,
     description: "Create or replace the report for a date (YYYY-MM-DD) as Markdown. bullets [{text, metric_key?}] are the day's short explanations; a bullet that names a metric links to its tile. Bullets left out keep the stored ones. Repeating a call changes nothing.",
     inputSchema: object({ date: day, markdown: text(200000, 1), bullets: { type: 'array', items: bullet, maxItems: 50 } }, ['date', 'markdown']),
-    run: (api, { date, ...body }) => api.request('PUT', `/api/progress/reports/${date}`, { body }),
+    run: (api, { date, ...body }) => api.request('PUT', `/api/progress/reports/${date}`, { body, idempotent: true }),
   },
   {
     name: 'get_report',
